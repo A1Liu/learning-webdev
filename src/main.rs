@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![feature(portable_simd)]
 
 mod ast;
 mod lexer;
