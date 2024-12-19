@@ -122,7 +122,9 @@ pub fn lex_number(state: &mut LexState, bytes: &[u8]) {}
 // TODO: handle utf-8 characters
 pub fn lex_word(state: &mut LexState, bytes: &[u8], letter: u8) {
     // let word = std::simd::u8x64::from_array(bytes.try_into().expect("Failed"));
-    while let Some(byte) = state.peek(bytes) {}
+    while let Some(byte) = state.peek(bytes) {
+        // Use char attrs here
+    }
 }
 
 pub fn lex_whitespace(state: &mut LexState, bytes: &[u8]) {
