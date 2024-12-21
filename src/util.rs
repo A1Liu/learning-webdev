@@ -34,7 +34,7 @@ impl Symbols {
         return None;
     }
 
-    pub fn to_str(&self, id: u32) -> Option<String> {
-        return self.to_name.get(id as usize).map(|a| a.clone());
+    pub fn to_str(&self, id: u32) -> Option<&str> {
+        return self.to_name.get(id as usize).map(|a| -> &str { &*a });
     }
 }
