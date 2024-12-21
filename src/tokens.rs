@@ -49,7 +49,7 @@ pub enum TokenKind {
     LBrace,
     RBrace,
     Semicolon,
- Colon,
+    Colon,
 
     LineComment,
     Comment,
@@ -102,6 +102,7 @@ pub enum Key {
     Import,
     In,
     Instanceof,
+    Let,
     New,
     Null,
     Return,
