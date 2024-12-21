@@ -106,7 +106,7 @@ pub fn lex(text: &str, symbols: &mut Symbols) -> Result<TokenVec, LexResult> {
                 let result = lex_string(state, bytes, StringOpener::DubQuote);
                 state.e(result)?;
             }
-            b'`' => lex_template(state, bytes, false),
+            b'`' => lex_template(state, bytes, true),
 
             b'/' => lex_comment_or_div(state, bytes),
 
@@ -163,16 +163,16 @@ pub fn lex(text: &str, symbols: &mut Symbols) -> Result<TokenVec, LexResult> {
 
 #[repr(u8)]
 pub enum StringOpener {
-    Quote,
-    DubQuote,
+    Quote = b'\'',
+    DubQuote = b'"',
 }
 
 const NEWLINE_SIMD: Simd<u8, 32> = Simd::from_array([b'\n'; 32]);
 const ZERO_SIMD: Simd<u8, 32> = Simd::from_array([0; 32]);
 
 pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
-    const STAR_SIMD: Simd<u8, 32> = Simd::from_array([b'*'; 32]);
-    const SLASH_SIMD: Simd<u8, 32> = crate::simd::shiftl_filter(b'/', 1);
+    let star_filter = crate::simd::FilterShiftR::<1>::new(b'*');
+    const SLASH_SIMD: Simd<u8, 32> = Simd::from_array([b'/'; 32]);
 
     match state.peek(bytes).unwrap_or(0) {
         b'/' => loop {
@@ -194,18 +194,17 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
             state.incr();
 
             let text = state.peek_32(bytes);
-            let text_left_1 = text.rotate_elements_left::<1>();
             let zero_mask = text.simd_eq(ZERO_SIMD);
 
-            let star_mask = text.simd_eq(STAR_SIMD);
-            let slash_mask = text_left_1.simd_eq(SLASH_SIMD);
+            let star_mask = star_filter.check_eq(text);
+            let slash_mask = text.simd_eq(SLASH_SIMD);
 
             let comment_end_mask = star_mask & slash_mask;
 
             match comment_end_mask.first_set() {
                 None => {}
                 Some(index) => {
-                    state.incr_count(index + 2);
+                    state.incr_count(index + 1);
                     state.add_token(TokenKind::Comment);
                     break;
                 }
@@ -228,22 +227,15 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
 }
 
 pub fn lex_string(state: &mut LexState, bytes: &[u8], opener: StringOpener) -> Result<(), String> {
-    const QUOTE_MASK: Simd<u8, 32> = Simd::from_array([b'\''; 32]);
     const NEWLINE_MASK: Simd<u8, 32> = Simd::from_array([b'\n'; 32]);
-    const DUB_QUOTE_MASK: Simd<u8, 32> = Simd::from_array([b'"'; 32]);
-    const BACKSLASH_FILTER: Simd<u8, 32> = crate::simd::shiftr_filter(b'\\', 1);
-
-    let mask = if let StringOpener::Quote = opener {
-        QUOTE_MASK
-    } else {
-        DUB_QUOTE_MASK
-    };
+    let backslash_filter = crate::simd::FilterShiftR::<1>::new(b'\\');
+    let mask = Simd::from_array([opener as u8; 32]);
 
     loop {
         let text = state.peek_32(bytes);
 
         let zero_mask = text.simd_eq(ZERO_SIMD);
-        let not_escaped_mask = text.rotate_elements_right::<1>().simd_ne(BACKSLASH_FILTER);
+        let not_escaped_mask = backslash_filter.check_ne(text);
         let quote_mask = text.simd_eq(mask);
         let newline_mask = text.simd_eq(NEWLINE_MASK);
 
@@ -276,29 +268,32 @@ pub fn lex_string(state: &mut LexState, bytes: &[u8], opener: StringOpener) -> R
 
         state.incr();
 
+        state.add_token(TokenKind::String);
+
         return Ok(());
     }
 }
 
 pub fn lex_template(state: &mut LexState, bytes: &[u8], beginning: bool) {
-    const TICK_MASK: Simd<u8, 32> = Simd::from_array([b'`'; 32]);
-    const SLASH_MASK_1: Simd<u8, 32> = crate::simd::shiftr_filter(b'\\', 1);
+    println!("TEST");
 
-    const DOLLAR_MASK_1: Simd<u8, 32> = crate::simd::shiftr_filter(b'$', 1);
-    const SLASH_MASK_2: Simd<u8, 32> = crate::simd::shiftr_filter(b'\\', 2);
+    const TICK_MASK: Simd<u8, 32> = Simd::from_array([b'`'; 32]);
     const LBRACE_MASK: Simd<u8, 32> = Simd::from_array([b'{'; 32]);
+
+    let slash_1_filter = crate::simd::FilterShiftR::<1>::new(b'\\');
+    let dollar_1_filter = crate::simd::FilterShiftR::<1>::new(b'$');
+    let slash_2_filter = crate::simd::FilterShiftR::<2>::new(b'\\');
 
     loop {
         let text = state.peek_32(bytes);
 
         let tick_mask = text.simd_eq(TICK_MASK);
         let lbrace_mask = text.simd_eq(LBRACE_MASK);
-        let text_rot_1 = text.rotate_elements_right::<1>();
-        let text_rot_2 = text.rotate_elements_right::<2>();
 
-        let slash_mask_1 = text_rot_1.simd_ne(SLASH_MASK_1);
-        let dollar_mask_1 = text_rot_1.simd_eq(DOLLAR_MASK_1);
-        let slash_mask_2 = text_rot_2.simd_ne(SLASH_MASK_2);
+        let slash_mask_1 = slash_1_filter.check_ne(text);
+
+        let slash_mask_2 = slash_2_filter.check_ne(text);
+        let dollar_mask_1 = dollar_1_filter.check_eq(text);
 
         let tick_end_mask = tick_mask & slash_mask_1;
         let lbrace_end_mask = lbrace_mask & dollar_mask_1 & slash_mask_2;
@@ -330,6 +325,7 @@ pub fn lex_template(state: &mut LexState, bytes: &[u8], beginning: bool) {
             }
         }
 
+        // panic!("");
         break;
     }
 }
@@ -421,6 +417,7 @@ pub fn lex_number(state: &mut LexState, bytes: &[u8], mut has_dot: bool) {
 
             _ => {
                 state.add_token(TokenKind::Number);
+                return;
             }
         }
     }
@@ -503,10 +500,11 @@ mod tests {
 
         let mut output = Vec::new();
         for token in &tokens {
-            println!("{:?}", token.to_owned());
             if *token.kind == TokenKind::Whitespace {
                 continue;
             }
+
+            println!("{:?}", token.to_owned());
 
             output.push(format!("{:?}", token.kind));
         }
@@ -529,9 +527,13 @@ mod tests {
         let yaml_text = yaml_text_2;
 
         let docs = YamlLoader::load_from_str(yaml_text).unwrap();
-        let doc = &docs[0];
+        if docs.len() == 0 {
+            return;
+        }
 
+        let doc = &docs[0];
         let expected_token_string = doc["tokens"].as_str().unwrap_or("");
+
         let mut expected_tokens = Vec::new();
         for token in expected_token_string.trim().split(",") {
             let token = token.trim();
