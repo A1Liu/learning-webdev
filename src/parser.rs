@@ -110,48 +110,41 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
                 ctx.incr();
             }
 
-            ctx.push_state(parse_if_end, state);
+            ctx.push_state(
+                |ctx, _tokens, state| {
+                    ctx.add_node(state.start_token, AstNodeKind::StmtIf);
+                    return Ok(());
+                },
+                state,
+            );
 
             // TODO: use the proper state here
             // if (a) blah();
             //        ^
             ctx.push_proc(parse_stmt);
 
-            ctx.push_state(parse_if_2, state);
+            ctx.push_state(
+                |ctx, tokens, _state| {
+                    while let Some(TokenKind::Whitespace) = ctx.peek(&tokens) {
+                        ctx.incr();
+                    }
 
-            ctx.push_proc(parse_if_end);
+                    match ctx.peek(&tokens) {
+                        Some(TokenKind::RParen) => {
+                            ctx.incr();
+                        }
+                        _ => {
+                            ctx.throw(format!("if statement missing opening parenthesis"))?;
+                        }
+                    }
+
+                    return Ok(());
+                },
+                state,
+            );
 
             return Ok(());
 
-            fn parse_if_2(
-                ctx: &mut ParseContext,
-                tokens: TokenSlice,
-                _state: StackState,
-            ) -> Result<(), String> {
-                while let Some(TokenKind::Whitespace) = ctx.peek(&tokens) {
-                    ctx.incr();
-                }
-
-                match ctx.peek(&tokens) {
-                    Some(TokenKind::RParen) => {
-                        ctx.incr();
-                    }
-                    _ => {
-                        ctx.throw(format!("if statement missing opening parenthesis"))?;
-                    }
-                }
-
-                return Ok(());
-            }
-            fn parse_if_end(
-                ctx: &mut ParseContext,
-                _tokens: TokenSlice,
-                state: StackState,
-            ) -> Result<(), String> {
-                ctx.add_node(state.start_token, AstNodeKind::StmtIf);
-
-                return Ok(());
-            }
         }
 
         _ => unimplemented!(),
@@ -165,6 +158,14 @@ fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
     };
 
     match tok {
+        TokenKind::Number => {
+            ctx.add_node(state.start_token, AstNodeKind::ExprNumber);
+        }
 
+        _ => {
+            unimplemented!();
+        }
     }
+
+    return Ok(());
 }
