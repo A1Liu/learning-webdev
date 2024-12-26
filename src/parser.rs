@@ -158,4 +158,13 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
     }
 }
 
-fn parse_expr() {}
+fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
+    let tok = match ctx.peek(&tokens) {
+        None => return Ok(()),
+        Some(t) => t,
+    };
+
+    match tok {
+
+    }
+}
