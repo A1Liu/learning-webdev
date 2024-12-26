@@ -39,3 +39,23 @@ const fn check_astnodekind_size() {
 }
 
 const _: () = check_astnodekind_size();
+
+struct TraversalStack {
+    sibling_index: usize,
+    subtree_size: usize,
+}
+
+pub struct AstPostorderTraversal<'a> {
+    tree: &'a AstNodeVec,
+    tree_stack: Vec<TraversalStack>,
+    stack_top: TraversalStack,
+    index: usize,
+}
+
+impl<'a> Iterator for AstPostorderTraversal<'a> {
+    type Item = AstNodeRef<'a>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
+    }
+}
