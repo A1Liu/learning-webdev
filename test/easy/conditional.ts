@@ -1,7 +1,7 @@
 /*---
-tokens: Comment,Key(If),LParen,Key(True),RParen,LBrace,RBrace,Key(Else),LBrace,RBrace
+tokens: Comment,Key(If),LParen,Key(True),RParen,LBrace,RBrace
+ast: StmtIfIntro,ExprBoolean,StmtBlockIntro,StmtBlock,StmtIf
 ---*/
 
 if (true) {
-} else {
 }

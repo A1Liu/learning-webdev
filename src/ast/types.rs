@@ -7,6 +7,7 @@ pub enum AstNodeKind {
     // Expressions
     ExprString,
     ExprNumber,
+    ExprBoolean,
 
     ExprTemplateIntro,
     ExprTemplate,
@@ -24,6 +25,9 @@ pub enum AstNodeKind {
     // Statements
     StmtIfIntro,
     StmtIf,
+
+    StmtBlockIntro,
+    StmtBlock,
 
     StmtSentinel, // A dummy node that does nothing and doesn't technically exist. However, it
                   // makes traversal math easier to always include it in the beginning.

@@ -49,6 +49,39 @@ impl ParseContext {
         return Some(token);
     }
 
+    fn consume_spaces<'a>(&mut self, tokens: &'a TokenSlice<'a>) -> usize {
+        let start = self.index;
+        while let Some(token) = tokens.get(self.index) {
+            let token_kind = *token.kind;
+            match token_kind {
+                TokenKind::Whitespace | TokenKind::Comment | TokenKind::LineComment => {
+                    self.incr();
+                    continue;
+                }
+                _ => break,
+            }
+        }
+
+        return self.index - start;
+    }
+
+    fn consume_ifs<'a>(
+        &mut self,
+        tokens: &'a TokenSlice<'a>,
+        kinds: &[TokenKind],
+    ) -> Option<TokenRef<'a>> {
+        let token = tokens.get(self.index)?;
+        let token_kind = *token.kind;
+        for &kind in kinds {
+            if token_kind == kind {
+                self.incr();
+                return Some(token);
+            }
+        }
+
+        return None;
+    }
+
     fn peek<'a>(&self, tokens: &'a TokenSlice<'a>) -> Option<TokenKind> {
         return tokens.get(self.index).map(|s| *s.kind);
     }
@@ -101,6 +134,8 @@ pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
 }
 
 fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
+    ctx.consume_spaces(&tokens);
+
     let tok = match ctx.peek(&tokens) {
         None => return Ok(()),
         Some(t) => t,
@@ -108,9 +143,8 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
 
     match tok {
         TokenKind::Key(Key::If) => {
-            ctx.add_node(&state, AstNodeKind::StmtIfIntro);
-
             ctx.incr();
+            ctx.add_node(&state, AstNodeKind::StmtIfIntro);
 
             while let Some(_) = ctx.consume_if(&tokens, TokenKind::Whitespace) {}
 
@@ -159,7 +193,38 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
             return Ok(());
         }
 
-        _ => unimplemented!(),
+        TokenKind::Semicolon => {
+            ctx.incr();
+            return Ok(());
+        }
+
+        TokenKind::LBrace => {
+            ctx.incr();
+            ctx.add_node(&state, AstNodeKind::StmtBlockIntro);
+
+            const BLOCK_END: ParseStackFunc = |ctx, tokens, state| {
+                ctx.consume_spaces(&tokens);
+
+                match ctx.peek(&tokens) {
+                    Some(TokenKind::RBrace) => {
+                        ctx.incr();
+                        ctx.add_node(&state, AstNodeKind::StmtBlock);
+                    }
+                    _ => {
+                        ctx.push_state(state, BLOCK_END);
+                        ctx.push_state(state, parse_stmt);
+                    }
+                }
+
+                return Ok(());
+            };
+
+            ctx.push_state(state, BLOCK_END);
+
+            return Ok(());
+        }
+
+        _ => unimplemented!("TokenKind={:?}", tok),
     }
 }
 
@@ -171,7 +236,13 @@ fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
 
     match tok {
         TokenKind::Number => {
+            ctx.incr();
             ctx.add_node(&state, AstNodeKind::ExprNumber);
+        }
+
+        TokenKind::Key(Key::True) => {
+            ctx.incr();
+            ctx.add_node(&state, AstNodeKind::ExprBoolean);
         }
 
         _ => {
@@ -188,7 +259,7 @@ mod tests {
     use crate::lexer::*;
     use crate::util::*;
 
-    // #[test_resources("test/easy/conditional.*")]
+    #[test_resources("test/easy/conditional.*")]
     fn parse_easy(path: &str) {
         let source = std::fs::read_to_string(path).expect("Should have been able to read the file");
 
@@ -212,12 +283,13 @@ mod tests {
         };
         let expected_token_string = doc["ast"].as_str().unwrap_or("");
 
-        let mut expected_tokens = Vec::new();
+        let mut expected_tokens = Vec::with_capacity(output.len());
+        expected_tokens.push(AstNodeKind::StmtSentinel.into());
         for token in expected_token_string.trim().split(",") {
             let token = token.trim();
             expected_tokens.push(token);
         }
 
-        // assert_eq!(&output, &expected_tokens);
+        assert_eq!(&output, &expected_tokens);
     }
 }
