@@ -44,6 +44,8 @@ impl ParseContext {
             return None;
         }
 
+        self.incr();
+
         return Some(token);
     }
 
@@ -67,18 +69,23 @@ impl ParseContext {
     }
 }
 
-pub fn parse(tokens: &TokenVec) -> Result<(), String> {
+pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
     let mut ctx = ParseContext {
         index: 0,
         parse_stack: Vec::with_capacity(32),
         tree: AstNodeVec::new(),
     };
 
+    ctx.tree.push(AstNode {
+        kind: AstNodeKind::StmtSentinel,
+        subtree_size: 1,
+    });
+
     ctx.parse_stack.push(StackEntry {
         proc: parse_stmt,
         state: Some(StackState {
             start_token: 0,
-            start_tree_index: 0,
+            start_tree_index: 1,
         }),
     });
 
@@ -90,7 +97,7 @@ pub fn parse(tokens: &TokenVec) -> Result<(), String> {
         proc(&mut ctx, tokens.as_slice(), state)?;
     }
 
-    return Ok(());
+    return Ok(ctx.tree);
 }
 
 fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
@@ -173,4 +180,44 @@ fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
     }
 
     return Ok(());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::lexer::*;
+    use crate::util::*;
+
+    // #[test_resources("test/easy/conditional.*")]
+    fn parse_easy(path: &str) {
+        let source = std::fs::read_to_string(path).expect("Should have been able to read the file");
+
+        let mut symbols = Symbols::new();
+        let tokens = lex(&source, &mut symbols)
+            .map_err(|e| e.error)
+            .expect("doesn't error");
+
+        let ast = parse(&tokens).expect("doesn't error");
+
+        let mut output = Vec::new();
+        for token in &ast {
+            println!("{:?}", token.to_owned());
+
+            output.push(format!("{:?}", token.kind));
+        }
+
+        let doc = match extract_yaml(&source) {
+            None => return,
+            Some(d) => d,
+        };
+        let expected_token_string = doc["ast"].as_str().unwrap_or("");
+
+        let mut expected_tokens = Vec::new();
+        for token in expected_token_string.trim().split(",") {
+            let token = token.trim();
+            expected_tokens.push(token);
+        }
+
+        // assert_eq!(&output, &expected_tokens);
+    }
 }

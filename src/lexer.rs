@@ -484,8 +484,7 @@ type MyFunc = for<'a> fn(state: &'a mut LexState, bytes: &'a [u8]);
 #[cfg(test)]
 mod tests {
     use super::*;
-    use test_generator::test_resources;
-    use yaml_rust::YamlLoader;
+    use crate::util::tests::*;
 
     #[test_resources("test/easy/*")]
     fn lex_easy(path: &str) {
@@ -496,7 +495,7 @@ mod tests {
             .map_err(|e| e.error)
             .expect("doesn't error");
 
-        println!("{}", source);
+        // println!("{}", source);
 
         let mut output = Vec::new();
         for token in &tokens {
@@ -509,29 +508,10 @@ mod tests {
             output.push(format!("{:?}", token.kind));
         }
 
-        let mut yaml_text = "";
-        for item in source.split("/*---") {
-            if item == "" {
-                continue;
-            }
-            yaml_text = item;
-            break;
-        }
-
-        let mut yaml_text_2 = "";
-        for item in yaml_text.split("---*/") {
-            yaml_text_2 = item;
-            break;
-        }
-
-        let yaml_text = yaml_text_2;
-
-        let docs = YamlLoader::load_from_str(yaml_text).unwrap();
-        if docs.len() == 0 {
-            return;
-        }
-
-        let doc = &docs[0];
+        let doc = match extract_yaml(&source) {
+            None => return,
+            Some(d) => d,
+        };
         let expected_token_string = doc["tokens"].as_str().unwrap_or("");
 
         let mut expected_tokens = Vec::new();

@@ -38,3 +38,32 @@ impl Symbols {
         return self.to_name.get(id as usize).map(|a| -> &str { &*a });
     }
 }
+
+#[cfg(test)]
+pub use tests::*;
+#[cfg(test)]
+pub mod tests {
+    pub use test_generator::test_resources;
+    pub use yaml_rust::YamlLoader;
+
+    pub fn extract_yaml(source: &str) -> Option<yaml_rust::Yaml> {
+        let mut yaml_text = "";
+        for item in source.split("/*---") {
+            if item == "" {
+                continue;
+            }
+            yaml_text = item;
+            break;
+        }
+
+        let mut yaml_text_2 = "";
+        for item in yaml_text.split("---*/") {
+            yaml_text_2 = item;
+            break;
+        }
+
+        let yaml_text = yaml_text_2;
+        let mut docs = YamlLoader::load_from_str(yaml_text).unwrap();
+        return docs.pop();
+    }
+}
