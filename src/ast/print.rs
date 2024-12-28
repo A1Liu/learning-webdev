@@ -30,8 +30,14 @@ pub struct LinePrinter<'a> {
 
 impl<'a> LinePrinter<'a> {
     pub fn print_tree(&mut self, tree: &AstNodeVec, symbols: &Symbols) -> std::io::Result<()> {
+        // TODO: need traversal information, e.g. direction of movement in tree
+        //
+        // Maybe current tree depth is sufficient
         for node in tree.preorder() {
-            let new_stack_entry = match node.kind {
+            // If the context needs to pop (potentially multiple times),
+            // do that now; also run any suffix stuff here
+
+            let new_stack_entry: Option<LinePrintStackEntry> = match node.kind {
                 AstNodeKind::StmtIfIntro => {
                     // NOTE:
                     //   need a stack, even for this ffs
@@ -41,10 +47,17 @@ impl<'a> LinePrinter<'a> {
                     //   on expressions. :/
                     //
                     write!(self.output, "if (")?;
+                    None
                 }
 
-                _ => {}
+                _ => None,
             };
+
+            // push new stack entry if necessary
+            if let Some(entry) = new_stack_entry {
+                let prev = core::mem::replace(&mut self.context, entry);
+                self.stack.push(prev);
+            }
         }
 
         return Ok(());
