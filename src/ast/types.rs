@@ -29,8 +29,9 @@ pub enum AstNodeKind {
     StmtBlockIntro,
     StmtBlock,
 
-    StmtSentinel, // A dummy node that does nothing and doesn't technically exist. However, it
-                  // makes traversal math easier to always include it in the beginning.
+    // A dummy node that does nothing and doesn't technically exist. However,
+    // it makes traversal math easier to always include it in the beginning.
+    StmtSentinel,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, StructOfArray)]
@@ -159,89 +160,113 @@ mod tests {
     use super::*;
     // use crate::util::*;
 
+    const SENTINEL: AstNode = AstNode {
+        kind: AstNodeKind::StmtSentinel,
+        subtree_size: 1,
+    };
+
+    struct TreeNode {
+        kind: AstNodeKind,
+        subtree_size: u32,
+        children: Vec<TreeNode>,
+    }
+
+    struct Traversals {
+        postorder: Vec<AstNode>,
+        preorder: Vec<AstNode>,
+        ast: AstNodeVec,
+    }
+
+    impl From<AstNodeKind> for TreeNode {
+        fn from(value: AstNodeKind) -> Self {
+            return Self::new(value);
+        }
+    }
+
+    impl TreeNode {
+        fn new(kind: AstNodeKind) -> Self {
+            return Self {
+                kind,
+                subtree_size: 1,
+                children: Vec::new(),
+            };
+        }
+
+        fn add<T: Into<Self>>(mut self, child: T) -> Self {
+            let child: Self = child.into();
+            self.subtree_size += child.subtree_size;
+            self.children.push(child);
+
+            return self;
+        }
+
+        fn postorder_append(&self, output: &mut Vec<AstNode>) {
+            for child in &self.children {
+                child.postorder_append(output);
+            }
+
+            output.push(AstNode {
+                kind: self.kind,
+                subtree_size: self.subtree_size,
+            });
+        }
+
+        fn preorder_append(&self, output: &mut Vec<AstNode>) {
+            output.push(AstNode {
+                kind: self.kind,
+                subtree_size: self.subtree_size,
+            });
+
+            for child in &self.children {
+                child.preorder_append(output);
+            }
+        }
+
+        fn traverse(tree: &Vec<Self>) -> Traversals {
+            let mut ast = AstNodeVec::new();
+
+            let mut postorder = Vec::new();
+            let mut preorder = Vec::new();
+            for node in tree {
+                node.postorder_append(&mut postorder);
+                node.preorder_append(&mut preorder);
+            }
+
+            for node in &postorder {
+                ast.push(node.clone());
+            }
+
+            return Traversals {
+                postorder,
+                preorder,
+                ast,
+            };
+        }
+    }
+
     #[test]
-    fn parse_easy() {
-        let mut ast = AstNodeVec::with_capacity(10);
-        ast.push(AstNode {
-            kind: AstNodeKind::StmtSentinel,
-            subtree_size: 1,
-        });
-        ast.push(AstNode {
-            kind: AstNodeKind::StmtIfIntro,
-            subtree_size: 1,
-        });
-        ast.push(AstNode {
-            kind: AstNodeKind::ExprBoolean,
-            subtree_size: 1,
-        });
-        ast.push(AstNode {
-            kind: AstNodeKind::StmtBlockIntro,
-            subtree_size: 1,
-        });
-        ast.push(AstNode {
-            kind: AstNodeKind::StmtBlock,
-            subtree_size: 2,
-        });
-        ast.push(AstNode {
-            kind: AstNodeKind::StmtIf,
-            subtree_size: 5,
-        });
+    fn traverse_easy() {
+        use AstNodeKind::*;
 
-        let mut preorder_ast = Vec::with_capacity(10);
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::StmtSentinel,
-            subtree_size: 1,
-        });
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::StmtIf,
-            subtree_size: 5,
-        });
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::StmtIfIntro,
-            subtree_size: 1,
-        });
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::ExprBoolean,
-            subtree_size: 1,
-        });
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::StmtBlock,
-            subtree_size: 2,
-        });
-        preorder_ast.push(AstNode {
-            kind: AstNodeKind::StmtBlockIntro,
-            subtree_size: 1,
-        });
+        let tree = vec![
+            TreeNode::new(StmtSentinel),
+            TreeNode::new(StmtIf)
+                .add(StmtIfIntro)
+                .add(ExprBoolean)
+                .add(TreeNode::new(StmtBlock).add(StmtBlockIntro)),
+        ];
 
-        let mut postorder = Vec::with_capacity(ast.len());
-        postorder.push(AstNode {
-            kind: AstNodeKind::StmtSentinel,
-            subtree_size: 1,
-        });
-        for token in ast.postorder() {
-            postorder.push(token.to_owned());
-        }
+        let traverse = TreeNode::traverse(&tree);
 
-        let mut preorder = Vec::with_capacity(ast.len());
-        preorder.push(AstNode {
-            kind: AstNodeKind::StmtSentinel,
-            subtree_size: 1,
-        });
-        for token in ast.preorder() {
-            preorder.push(token.to_owned());
-        }
+        let mut postorder = Vec::with_capacity(traverse.ast.len());
+        postorder.push(SENTINEL);
+        postorder.extend(traverse.ast.postorder().map(|a| a.to_owned()));
 
-        let mut source_order = Vec::new();
-        for token in &ast {
-            source_order.push(token.to_owned());
-        }
+        let mut preorder = Vec::with_capacity(traverse.ast.len());
+        preorder.push(SENTINEL);
+        preorder.extend(traverse.ast.preorder().map(|a| a.to_owned()));
 
-        let mut source_order = Vec::new();
-        for token in &ast {
-            source_order.push(token.to_owned());
-        }
-
-        assert_eq!(&postorder, &source_order);
-        assert_eq!(&preorder, &preorder_ast);
+        assert_eq!(&postorder, &traverse.postorder);
+        assert_eq!(&preorder, &traverse.preorder);
     }
 }

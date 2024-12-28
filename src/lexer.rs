@@ -3,12 +3,19 @@ use crate::util::*;
 use std::ops::*;
 use std::simd::prelude::*;
 
+#[derive(Default, Clone, Copy)]
+pub struct LexOptions {
+    include_comments: bool,
+    include_spacing: bool,
+}
+
 #[derive(Default)]
 pub struct LexState {
     pub begin_index: usize,
     pub index: usize,
     pub template_level: usize,
     pub tokens: TokenVec,
+    pub opts: LexOptions,
 }
 
 impl LexState {
@@ -92,7 +99,9 @@ pub fn lex(text: &str, symbols: &mut Symbols) -> Result<TokenVec, LexResult> {
         // Supposedly LLVM will automatically do the "computed-goto" trick here.
         // We'll profile/disassemble later ig.
         match byte {
-            b' ' | b'\t' | b'\n' | b'\r' => lex_whitespace(state, bytes),
+            b' ' | b'\t' => lex_whitespace(state, bytes, false),
+            b'\n' | b'\r' => lex_whitespace(state, bytes, true),
+
             b'a'..=b'z' | b'A'..=b'Z' | b'_' => lex_word(state, bytes, symbols),
             b'.' => lex_dot_with_suffix(state, bytes),
             b'0' => lex_number_with_prefix(state, bytes),
@@ -183,7 +192,11 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
 
             if let Some(index) = end_mask.first_set() {
                 state.incr_count(index + 1);
-                state.add_token(TokenKind::LineComment);
+
+                if state.opts.include_comments {
+                    state.add_token(TokenKind::LineComment);
+                }
+
                 break;
             }
 
@@ -205,7 +218,11 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
                 None => {}
                 Some(index) => {
                     state.incr_count(index + 1);
-                    state.add_token(TokenKind::Comment);
+
+                    if state.opts.include_comments {
+                        state.add_token(TokenKind::Comment);
+                    }
+
                     break;
                 }
             }
@@ -213,7 +230,11 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
             if let Some(index) = zero_mask.first_set() {
                 // This is technically an error.
                 state.incr_count(index);
-                state.add_token(TokenKind::Comment);
+
+                if state.opts.include_comments {
+                    state.add_token(TokenKind::Comment);
+                }
+
                 break;
             }
 
@@ -275,8 +296,6 @@ pub fn lex_string(state: &mut LexState, bytes: &[u8], opener: StringOpener) -> R
 }
 
 pub fn lex_template(state: &mut LexState, bytes: &[u8], beginning: bool) {
-    println!("TEST");
-
     const TICK_MASK: Simd<u8, 32> = Simd::from_array([b'`'; 32]);
     const LBRACE_MASK: Simd<u8, 32> = Simd::from_array([b'{'; 32]);
 
@@ -453,7 +472,7 @@ pub fn lex_word(state: &mut LexState, bytes: &[u8], symbols: &mut Symbols) {
     state.add_token_extra(TokenKind::Word, symbol);
 }
 
-pub fn lex_whitespace(state: &mut LexState, bytes: &[u8]) {
+pub fn lex_whitespace(state: &mut LexState, bytes: &[u8], mut has_newline: bool) {
     const TAB: Simd<u8, 32> = Simd::from_array([b'\t'; 32]);
     const SPACE: Simd<u8, 32> = Simd::from_array([b' '; 32]);
     const CARRIAGE_RETURN: Simd<u8, 32> = Simd::from_array([b'\r'; 32]);
@@ -466,12 +485,18 @@ pub fn lex_whitespace(state: &mut LexState, bytes: &[u8]) {
         let spaces = bytes.simd_eq(SPACE);
         let carriage_returns = bytes.simd_eq(CARRIAGE_RETURN);
 
-        let whitespace_mask = newlines | carriage_returns | spaces | tabs;
+        let newline_mask = newlines | carriage_returns;
+        let whitespace_mask = newline_mask | spaces | tabs;
         let whitespace_mask = !whitespace_mask;
+        has_newline = has_newline || newline_mask.any();
 
         if let Some(index) = whitespace_mask.first_set() {
             state.incr_count(index);
-            state.add_token(TokenKind::Whitespace);
+
+            if state.opts.include_spacing || has_newline {
+                state.add_token(TokenKind::Whitespace);
+            }
+
             break;
         }
 

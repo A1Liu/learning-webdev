@@ -1,5 +1,5 @@
 /*---
-tokens: Comment,Key(Let),Word,Semicolon,Key(Let),Word,Semicolon
+tokens: Key(Let),Word,Semicolon,Key(Let),Word,Semicolon
 ---*/
 
 let a;
