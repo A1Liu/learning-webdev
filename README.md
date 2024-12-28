@@ -21,6 +21,10 @@ Writing a TS compiler just for practice.
   - state-machine over recursion for the parser, and some other ideas - https://github.com/carbon-language/carbon-lang/tree/trunk/toolchain/parse
   - Some of the most important stuff regarding traversal (see `TreeAndSubtrees` and the field `subtree_sizes_`) - https://github.com/carbon-language/carbon-lang/blob/trunk/toolchain/parse/tree_and_subtrees.h
   - State machine in action, else blocks (see `HandleStatementIfThenBlockFinish`) - https://github.com/carbon-language/carbon-lang/blob/trunk/toolchain/parse/handle_statement.cpp
+- Formatting
+  - A bag-of-heuristics approach - https://journal.stuffwithstuff.com/2015/09/08/the-hardest-program-ive-ever-written/
+  - Paper on Prettier - https://homepages.inf.ed.ac.uk/wadler/papers/prettier/prettier.pdf
 
 ## Testing
 - E.g. `cargo test lexer::tests::lex_easy_test_easy_templates_ts -- --nocapture`
+- Thought - LLM test case generation may actually work pretty OK here

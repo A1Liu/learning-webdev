@@ -49,6 +49,10 @@ impl LexState {
         return self.begin_index..self.index;
     }
 
+    fn consume_span(&mut self) {
+        self.begin_index = self.index;
+    }
+
     fn add_token(&mut self, kind: TokenKind) {
         self.tokens.push(Token {
             kind,
@@ -195,6 +199,8 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
 
                 if state.opts.include_comments {
                     state.add_token(TokenKind::LineComment);
+                } else {
+                    state.consume_span();
                 }
 
                 break;
@@ -203,43 +209,50 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
             state.incr_count(32);
         },
 
-        b'*' => loop {
+        b'*' => {
             state.incr();
 
-            let text = state.peek_32(bytes);
-            let zero_mask = text.simd_eq(ZERO_SIMD);
+            loop {
+                let text = state.peek_32(bytes);
 
-            let star_mask = star_filter.check_eq(text);
-            let slash_mask = text.simd_eq(SLASH_SIMD);
+                let zero_mask = text.simd_eq(ZERO_SIMD);
 
-            let comment_end_mask = star_mask & slash_mask;
+                let star_mask = star_filter.check_eq(text);
+                let slash_mask = text.simd_eq(SLASH_SIMD);
 
-            match comment_end_mask.first_set() {
-                None => {}
-                Some(index) => {
-                    state.incr_count(index + 1);
+                let comment_end_mask = star_mask & slash_mask;
+
+                match comment_end_mask.first_set() {
+                    None => {}
+                    Some(index) => {
+                        state.incr_count(index + 1);
+
+                        if state.opts.include_comments {
+                            state.add_token(TokenKind::Comment);
+                        } else {
+                            state.consume_span();
+                        }
+
+                        break;
+                    }
+                }
+
+                if let Some(index) = zero_mask.first_set() {
+                    // This is technically an error.
+                    state.incr_count(index);
 
                     if state.opts.include_comments {
                         state.add_token(TokenKind::Comment);
+                    } else {
+                        state.consume_span();
                     }
 
                     break;
                 }
+
+                state.incr_count(31);
             }
-
-            if let Some(index) = zero_mask.first_set() {
-                // This is technically an error.
-                state.incr_count(index);
-
-                if state.opts.include_comments {
-                    state.add_token(TokenKind::Comment);
-                }
-
-                break;
-            }
-
-            state.incr_count(31);
-        },
+        }
 
         _ => {
             state.add_token(TokenKind::Div);
@@ -265,19 +278,22 @@ pub fn lex_string(state: &mut LexState, bytes: &[u8], opener: StringOpener) -> R
 
         let error_end_mask = zero_mask | newline_end_mask;
 
-        let (first_set, is_error) = match (quote_end_mask.first_set(), error_end_mask.first_set()) {
-            (Some(quote), Some(error)) => (std::cmp::min(quote, error), error < quote),
-            (Some(quote), None) => (quote, false),
-            (None, Some(error)) => (error, true),
-            (None, None) => {
+        match (quote_end_mask | error_end_mask).first_set() {
+            Some(index) => {
+                state.incr_count(index);
+            }
+            None => {
                 state.incr_count(31);
                 continue;
             }
-        };
+        }
 
-        state.incr_count(first_set);
+        let (quote_first, error_first) = (
+            quote_end_mask.first_set().unwrap_or(33),
+            error_end_mask.first_set().unwrap_or(33),
+        );
 
-        if is_error {
+        if error_first < quote_first {
             let zero_first = zero_mask.first_set().unwrap_or(32);
             let newline_first = newline_end_mask.first_set().unwrap_or(32);
             if zero_first < newline_first {
@@ -495,6 +511,8 @@ pub fn lex_whitespace(state: &mut LexState, bytes: &[u8], mut has_newline: bool)
 
             if state.opts.include_spacing || has_newline {
                 state.add_token(TokenKind::Whitespace);
+            } else {
+                state.consume_span();
             }
 
             break;
@@ -520,7 +538,7 @@ mod tests {
             .map_err(|e| e.error)
             .expect("doesn't error");
 
-        // println!("{}", source);
+        println!("{}", source);
 
         let mut output = Vec::new();
         for token in &tokens {
