@@ -8,6 +8,7 @@ pub enum AstNodeKind {
     ExprString,
     ExprNumber,
     ExprBoolean,
+    ExprWord,
 
     ExprTemplateIntro,
     ExprTemplate,
@@ -31,13 +32,18 @@ pub enum AstNodeKind {
 
     // A dummy node that does nothing and doesn't technically exist. However,
     // it makes traversal math easier to always include it in the beginning.
-    StmtSentinel,
+    UtilSentinel,
+
+    UtilComment,
+    UtilLineComment,
+    UtilWhitespace,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash, Debug, StructOfArray)]
 pub struct AstNode {
     pub kind: AstNodeKind,
     pub subtree_size: u32,
+    pub extra: u32,
 }
 
 // Flagged as dead code unfortunately
@@ -161,13 +167,13 @@ mod tests {
     // use crate::util::*;
 
     const SENTINEL: AstNode = AstNode {
-        kind: AstNodeKind::StmtSentinel,
+        kind: AstNodeKind::UtilSentinel,
         subtree_size: 1,
+        extra: 0,
     };
 
     struct TreeNode {
-        kind: AstNodeKind,
-        subtree_size: u32,
+        node: AstNode,
         children: Vec<TreeNode>,
     }
 
@@ -186,15 +192,18 @@ mod tests {
     impl TreeNode {
         fn new(kind: AstNodeKind) -> Self {
             return Self {
-                kind,
-                subtree_size: 1,
                 children: Vec::new(),
+                node: AstNode {
+                    kind,
+                    subtree_size: 1,
+                    extra: 0,
+                },
             };
         }
 
         fn add<T: Into<Self>>(mut self, child: T) -> Self {
             let child: Self = child.into();
-            self.subtree_size += child.subtree_size;
+            self.node.subtree_size += child.node.subtree_size;
             self.children.push(child);
 
             return self;
@@ -205,17 +214,11 @@ mod tests {
                 child.postorder_append(output);
             }
 
-            output.push(AstNode {
-                kind: self.kind,
-                subtree_size: self.subtree_size,
-            });
+            output.push(self.node);
         }
 
         fn preorder_append(&self, output: &mut Vec<AstNode>) {
-            output.push(AstNode {
-                kind: self.kind,
-                subtree_size: self.subtree_size,
-            });
+            output.push(self.node);
 
             for child in &self.children {
                 child.preorder_append(output);
@@ -249,7 +252,7 @@ mod tests {
         use AstNodeKind::*;
 
         let tree = vec![
-            TreeNode::new(StmtSentinel),
+            TreeNode::new(UtilSentinel),
             TreeNode::new(StmtIf)
                 .add(StmtIfIntro)
                 .add(ExprBoolean)

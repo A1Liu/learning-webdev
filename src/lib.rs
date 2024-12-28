@@ -6,3 +6,10 @@ pub mod lexer;
 pub mod simd;
 pub mod tokens;
 pub mod util;
+
+pub use lexer::{lex, lex_with_options, LexOptions};
+pub use ast::*;
+pub use util::Symbols;
+
+#[cfg(test)]
+pub use util::tests::*;

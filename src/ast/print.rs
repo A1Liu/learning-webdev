@@ -1,20 +1,53 @@
 use super::*;
+use crate::util::*;
 
-
-pub struct LinePrinter {
-    indent_stack: Vec<PrintStackEntry>,
-    stack_context: PrintStackEntry,
+struct SimpleLinePrintContext {
+    suffix: String,
+    indentation_level: u32,
 }
 
-impl LinePrinter {
-    pub fn print_tree(&self, tree: &AstNodeVec) {
-        for node in tree {
-            match node.kind {
-                AstNodeKind::StmtIfIntro => {}
+enum LinePrintContext {
+    // Pop items off in between children
+    Stacked(Vec<SimpleLinePrintContext>),
+
+    Simple(SimpleLinePrintContext),
+}
+
+// need prefix order traversal
+struct LinePrintStackEntry {
+    context: LinePrintContext,
+
+    // Insert between each child
+    separator: String,
+}
+
+pub struct LinePrinter<'a> {
+    current_indent: u32,
+    stack: Vec<LinePrintStackEntry>,
+    context: LinePrintStackEntry,
+    output: &'a mut dyn std::io::Write,
+}
+
+impl<'a> LinePrinter<'a> {
+    pub fn print_tree(&mut self, tree: &AstNodeVec, symbols: &Symbols) -> std::io::Result<()> {
+        for node in tree.preorder() {
+            let new_stack_entry = match node.kind {
+                AstNodeKind::StmtIfIntro => {
+                    // NOTE:
+                    //   need a stack, even for this ffs
+                    //
+                    // NOTE:
+                    //   need to do a traversal here to get infix ordering
+                    //   on expressions. :/
+                    //
+                    write!(self.output, "if (")?;
+                }
 
                 _ => {}
-            }
+            };
         }
+
+        return Ok(());
     }
 }
 
@@ -64,5 +97,30 @@ impl PrettyPrinter {
                 _ => {}
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::*;
+
+    #[test_resources("test/easy/conditional.*")]
+    fn print_easy(path: &str) {
+        let source = std::fs::read_to_string(path).expect("Should have been able to read the file");
+
+        let mut symbols = Symbols::new();
+        let tokens = lex_with_options(
+            &source,
+            &mut symbols,
+            LexOptions {
+                include_comments: true,
+                include_spacing: false,
+            },
+        )
+        .map_err(|e| e.error)
+        .expect("doesn't error");
+
+        let ast = parse(&tokens);
     }
 }

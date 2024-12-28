@@ -5,8 +5,8 @@ use std::simd::prelude::*;
 
 #[derive(Default, Clone, Copy)]
 pub struct LexOptions {
-    include_comments: bool,
-    include_spacing: bool,
+    pub include_comments: bool,
+    pub include_spacing: bool,
 }
 
 #[derive(Default)]
@@ -103,7 +103,17 @@ pub struct LexResult {
 }
 
 pub fn lex(text: &str, symbols: &mut Symbols) -> Result<TokenVec, LexResult> {
+    return lex_with_options(text, symbols, LexOptions::default());
+}
+
+pub fn lex_with_options(
+    text: &str,
+    symbols: &mut Symbols,
+    opts: LexOptions,
+) -> Result<TokenVec, LexResult> {
     let mut state_data = LexState::default();
+    state_data.opts = opts;
+
     let state = &mut state_data;
     let bytes = text.as_bytes();
 

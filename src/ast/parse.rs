@@ -24,9 +24,14 @@ struct ParseContext {
 
 impl ParseContext {
     fn add_node(&mut self, state: &StackState, kind: AstNodeKind) {
+        self.add_node_extra(state, kind, 0);
+    }
+
+    fn add_node_extra(&mut self, state: &StackState, kind: AstNodeKind, extra: u32) {
         self.tree.push(AstNode {
             kind,
             subtree_size: self.tree.len() as u32 + 1 - state.start_tree_index,
+            extra,
         });
     }
 
@@ -86,6 +91,10 @@ impl ParseContext {
         return tokens.get(self.index).map(|s| *s.kind);
     }
 
+    fn peek_ref<'a>(&self, tokens: &'a TokenSlice<'a>) -> Option<TokenRef<'a>> {
+        return tokens.get(self.index);
+    }
+
     fn push_proc(&mut self, proc: ParseStackFunc) {
         self.parse_stack.push(StackEntry { proc, state: None });
     }
@@ -110,8 +119,9 @@ pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
     };
 
     ctx.tree.push(AstNode {
-        kind: AstNodeKind::StmtSentinel,
+        kind: AstNodeKind::UtilSentinel,
         subtree_size: 1,
+        extra: 0,
     });
 
     ctx.parse_stack.push(StackEntry {
@@ -229,12 +239,12 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
 }
 
 fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
-    let tok = match ctx.peek(&tokens) {
+    let tok = match ctx.peek_ref(&tokens) {
         None => return Ok(()),
         Some(t) => t,
     };
 
-    match tok {
+    match tok.kind {
         TokenKind::Number => {
             ctx.incr();
             ctx.add_node(&state, AstNodeKind::ExprNumber);
@@ -243,6 +253,11 @@ fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
         TokenKind::Key(Key::True) => {
             ctx.incr();
             ctx.add_node(&state, AstNodeKind::ExprBoolean);
+        }
+
+        TokenKind::Word => {
+            ctx.incr();
+            ctx.add_node_extra(&state, AstNodeKind::ExprWord, *tok.extra);
         }
 
         _ => {
@@ -284,7 +299,7 @@ mod tests {
         let expected_token_string = doc["ast"].as_str().unwrap_or("");
 
         let mut expected_tokens = Vec::with_capacity(output.len());
-        expected_tokens.push(AstNodeKind::StmtSentinel.into());
+        expected_tokens.push(AstNodeKind::UtilSentinel.into());
         for token in expected_token_string.trim().split(",") {
             let token = token.trim();
             expected_tokens.push(token);
