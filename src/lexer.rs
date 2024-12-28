@@ -49,7 +49,15 @@ impl LexState {
         return self.begin_index..self.index;
     }
 
-    fn consume_span(&mut self) {
+    fn add_token_cond(&mut self, kind: TokenKind, cond: bool) {
+        if cond {
+            self.tokens.push(Token {
+                kind,
+                text_index: self.begin_index,
+                extra: self.index as u32,
+            });
+        }
+
         self.begin_index = self.index;
     }
 
@@ -197,11 +205,7 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
             if let Some(index) = end_mask.first_set() {
                 state.incr_count(index + 1);
 
-                if state.opts.include_comments {
-                    state.add_token(TokenKind::LineComment);
-                } else {
-                    state.consume_span();
-                }
+                state.add_token_cond(TokenKind::LineComment, state.opts.include_comments);
 
                 break;
             }
@@ -227,12 +231,7 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
                     Some(index) => {
                         state.incr_count(index + 1);
 
-                        if state.opts.include_comments {
-                            state.add_token(TokenKind::Comment);
-                        } else {
-                            state.consume_span();
-                        }
-
+                        state.add_token_cond(TokenKind::Comment, state.opts.include_comments);
                         break;
                     }
                 }
@@ -241,12 +240,7 @@ pub fn lex_comment_or_div(state: &mut LexState, bytes: &[u8]) {
                     // This is technically an error.
                     state.incr_count(index);
 
-                    if state.opts.include_comments {
-                        state.add_token(TokenKind::Comment);
-                    } else {
-                        state.consume_span();
-                    }
-
+                    state.add_token_cond(TokenKind::Comment, state.opts.include_comments);
                     break;
                 }
 
@@ -509,11 +503,10 @@ pub fn lex_whitespace(state: &mut LexState, bytes: &[u8], mut has_newline: bool)
         if let Some(index) = whitespace_mask.first_set() {
             state.incr_count(index);
 
-            if state.opts.include_spacing || has_newline {
-                state.add_token(TokenKind::Whitespace);
-            } else {
-                state.consume_span();
-            }
+            state.add_token_cond(
+                TokenKind::Whitespace,
+                state.opts.include_spacing || has_newline,
+            );
 
             break;
         }
