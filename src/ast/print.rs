@@ -270,16 +270,16 @@ impl NotationBuilder {
                     let children = self.collect_tree(*node.subtree_size);
 
                     if children.len() <= 1 {
-                        break 'end Notation::txt("{}");
+                        break 'end Notation::txt("{") & Notation::nl() & Notation::txt("}");
                     }
 
-                    let mut note = Notation::nl() & Notation::txt("}");
+                    let mut note = Notation::nl();
 
                     for child in children {
                         note = Notation::nl() & child & note;
                     }
 
-                    Notation::txt("{") & note
+                    Notation::txt("{") & Notation::indent(note) & Notation::txt("}")
                 }
                 StmtIf => {
                     let mut children = self.collect_tree(*node.subtree_size);
