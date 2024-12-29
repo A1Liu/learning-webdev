@@ -105,7 +105,7 @@ impl<'a> Chunk<'a> {
     }
 }
 
-struct PrettyPrinter<'a> {
+struct WadlerPrinter<'a> {
     /// Maximum line width that we'll try to stay within
     width: u32,
     /// Current column position
@@ -118,14 +118,14 @@ struct PrettyPrinter<'a> {
     indent_unit: u32,
 }
 
-impl<'a> PrettyPrinter<'a> {
-    fn new(notation: &'a Notation, width: u32) -> PrettyPrinter<'a> {
+impl<'a> WadlerPrinter<'a> {
+    fn new(notation: &'a Notation, width: u32) -> WadlerPrinter<'a> {
         let chunk = Chunk {
             notation,
             indent: 0,
             flat: false,
         };
-        PrettyPrinter {
+        WadlerPrinter {
             width,
             col: 0,
             chunks: vec![chunk],
@@ -326,49 +326,19 @@ impl NotationBuilder {
             self.note_stack.push((notation, *node.subtree_size));
         }
 
-        return self.note_stack.pop().unwrap().0;
+        let mut note = Notation::txt("");
+        while let Some((cur, _)) = self.note_stack.pop() {
+            note = cur & Notation::nl() & note;
+        }
+        return note;
     }
 }
-
-// This is an algorithm I came up with before reading Justin's article/Wadlin's paper.
-// In theory they're close to equivalent, but Justin/Wadlin actually had code
-// which implemented it, and I struggled quite a bit with actually implementing
-// a first prototype.
-//
-// Use atoms & nested groups
-// Start with all groups horizontal, and flip to vertical as needed, starting
-// with top-most groups. E.g.
-//
-// Start with:     |
-//                 |< line length limit
-// func(a, b, c(d), e(f + g, hijklmnop))
-//
-// Then first flip outside:
-//                 |< line length limit
-// func(
-//   a,
-//   b,
-//   c(d),
-//   e(f + g, hijklmnop)
-// )
-//
-// Then flip any inner groups that need it:
-//                 |< line length limit
-// func(
-//   a,
-//   b,
-//   c(d),
-//   e(
-//     f + g,
-//     hijklmnop
-//   )
-// )
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test_resources("test/easy/conditional.*")]
+    #[test_resources("test/printing/*")]
     fn print_easy(path: &str) {
         let source = std::fs::read_to_string(path).expect("Should have been able to read the file");
 
@@ -386,10 +356,15 @@ mod tests {
 
         let ast = parse(&tokens).expect("doesn't error");
 
+        println!(
+            "{:?}",
+            &ast.iter().map(|a| a.to_owned()).collect::<Vec<_>>()
+        );
+
         let mut builder = NotationBuilder::default();
         let notation = builder.build(&ast);
 
-        let mut printer = PrettyPrinter::new(&notation, 80);
+        let mut printer = WadlerPrinter::new(&notation, 80);
 
         let output = printer.print();
 

@@ -7,8 +7,7 @@ struct StackState {
     start_tree_index: u32,
 }
 
-type ParseStackFunc =
-    fn(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String>;
+type ParseStackFunc = fn(ctx: &mut ParseContext, state: StackState) -> Result<(), String>;
 
 #[derive(Clone, Copy, Debug)]
 struct StackEntry {
@@ -16,13 +15,14 @@ struct StackEntry {
     state: Option<StackState>,
 }
 
-struct ParseContext {
+struct ParseContext<'a> {
+    tokens: TokenSlice<'a>,
     index: usize,
     parse_stack: Vec<StackEntry>,
     tree: AstNodeVec,
 }
 
-impl ParseContext {
+impl<'a> ParseContext<'a> {
     fn add_node(&mut self, state: &StackState, kind: AstNodeKind) {
         self.add_node_extra(state, kind, 0);
     }
@@ -39,24 +39,20 @@ impl ParseContext {
         self.index += 1;
     }
 
-    fn consume_if<'a>(
-        &mut self,
-        tokens: &'a TokenSlice<'a>,
-        kind: TokenKind,
-    ) -> Option<TokenRef<'a>> {
-        let token = tokens.get(self.index)?;
+    fn consume_if(&mut self, kind: TokenKind) -> Option<TokenRef> {
+        let token = self.tokens.get(self.index)?;
         if *token.kind != kind {
             return None;
         }
 
-        self.incr();
+        self.index += 1;
 
         return Some(token);
     }
 
-    fn consume_spaces<'a>(&mut self, tokens: &'a TokenSlice<'a>) -> usize {
+    fn consume_spaces(&mut self) -> usize {
         let start = self.index;
-        while let Some(token) = tokens.get(self.index) {
+        while let Some(token) = self.tokens.get(self.index) {
             let token_kind = *token.kind;
             match token_kind {
                 TokenKind::Whitespace | TokenKind::Comment | TokenKind::LineComment => {
@@ -70,16 +66,12 @@ impl ParseContext {
         return self.index - start;
     }
 
-    fn consume_ifs<'a>(
-        &mut self,
-        tokens: &'a TokenSlice<'a>,
-        kinds: &[TokenKind],
-    ) -> Option<TokenRef<'a>> {
-        let token = tokens.get(self.index)?;
+    fn consume_ifs(&mut self, kinds: &[TokenKind]) -> Option<TokenRef> {
+        let token = self.tokens.get(self.index)?;
         let token_kind = *token.kind;
         for &kind in kinds {
             if token_kind == kind {
-                self.incr();
+                self.index += 1;
                 return Some(token);
             }
         }
@@ -87,12 +79,12 @@ impl ParseContext {
         return None;
     }
 
-    fn peek<'a>(&self, tokens: &'a TokenSlice<'a>) -> Option<TokenKind> {
-        return tokens.get(self.index).map(|s| *s.kind);
+    fn peek(&self) -> Option<TokenKind> {
+        return self.tokens.get(self.index).map(|s| *s.kind);
     }
 
-    fn peek_ref<'a>(&self, tokens: &'a TokenSlice<'a>) -> Option<TokenRef<'a>> {
-        return tokens.get(self.index);
+    fn peek_ref(&self) -> Option<TokenRef> {
+        return self.tokens.get(self.index);
     }
 
     fn push_proc(&mut self, proc: ParseStackFunc) {
@@ -114,6 +106,7 @@ impl ParseContext {
 pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
     let mut ctx = ParseContext {
         index: 0,
+        tokens: tokens.as_slice(),
         parse_stack: Vec::with_capacity(32),
         tree: AstNodeVec::new(),
     };
@@ -132,21 +125,38 @@ pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
         }),
     });
 
+    let state = StackState {
+        start_token: 0,
+        start_tree_index: 1,
+    };
+
+    fn parse_inf(ctx: &mut ParseContext, _: StackState) -> Result<(), String> {
+        if ctx.peek().is_none() {
+            return Ok(());
+        }
+
+        ctx.push_proc(parse_inf);
+        ctx.push_proc(parse_stmt);
+
+        return Ok(());
+    }
+    ctx.push_state(state, parse_inf);
+
     while let Some(StackEntry { proc, state }) = ctx.parse_stack.pop() {
         let state = state.unwrap_or(StackState {
             start_token: ctx.index as u32,
             start_tree_index: ctx.tree.len() as u32,
         });
-        proc(&mut ctx, tokens.as_slice(), state)?;
+        proc(&mut ctx, state)?;
     }
 
     return Ok(ctx.tree);
 }
 
-fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
-    ctx.consume_spaces(&tokens);
+fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
+    ctx.consume_spaces();
 
-    let tok = match ctx.peek(&tokens) {
+    let tok = match ctx.peek() {
         None => return Ok(()),
         Some(t) => t,
     };
@@ -156,9 +166,9 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
             ctx.incr();
             ctx.add_node(&state, AstNodeKind::StmtIfIntro);
 
-            while let Some(_) = ctx.consume_if(&tokens, TokenKind::Whitespace) {}
+            while let Some(_) = ctx.consume_if(TokenKind::Whitespace) {}
 
-            match ctx.peek(&tokens) {
+            match ctx.peek() {
                 Some(TokenKind::LParen) => {
                     ctx.incr();
                 }
@@ -167,11 +177,13 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
                 }
             }
 
-            while let Some(TokenKind::Whitespace) = ctx.peek(&tokens) {
+            while let Some(TokenKind::Whitespace) = ctx.peek() {
                 ctx.incr();
             }
 
-            ctx.push_state(state, |ctx, _tokens, state| {
+            ctx.push_state(state, |ctx, state| {
+                while let Some(_) = ctx.consume_if(TokenKind::Whitespace) {}
+
                 ctx.add_node(&state, AstNodeKind::StmtIf);
                 return Ok(());
             });
@@ -181,12 +193,12 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
             //        ^
             ctx.push_proc(parse_stmt);
 
-            ctx.push_state(state, |ctx, tokens, _state| {
-                while let Some(TokenKind::Whitespace) = ctx.peek(&tokens) {
+            ctx.push_state(state, |ctx, _state| {
+                while let Some(TokenKind::Whitespace) = ctx.peek() {
                     ctx.incr();
                 }
 
-                match ctx.peek(&tokens) {
+                match ctx.peek() {
                     Some(TokenKind::RParen) => {
                         ctx.incr();
                     }
@@ -212,10 +224,10 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
             ctx.incr();
             ctx.add_node(&state, AstNodeKind::StmtBlockIntro);
 
-            const BLOCK_END: ParseStackFunc = |ctx, tokens, state| {
-                ctx.consume_spaces(&tokens);
+            const BLOCK_END: ParseStackFunc = |ctx, state| {
+                ctx.consume_spaces();
 
-                match ctx.peek(&tokens) {
+                match ctx.peek() {
                     Some(TokenKind::RBrace) => {
                         ctx.incr();
                         ctx.add_node(&state, AstNodeKind::StmtBlock);
@@ -238,8 +250,8 @@ fn parse_stmt(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
     }
 }
 
-fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> Result<(), String> {
-    let tok = match ctx.peek_ref(&tokens) {
+fn parse_expr(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
+    let tok = match ctx.peek_ref() {
         None => return Ok(()),
         Some(t) => t,
     };
@@ -256,8 +268,9 @@ fn parse_expr(ctx: &mut ParseContext, tokens: TokenSlice, state: StackState) -> 
         }
 
         TokenKind::Word => {
+            let extra = *tok.extra;
             ctx.incr();
-            ctx.add_node_extra(&state, AstNodeKind::ExprWord, *tok.extra);
+            ctx.add_node_extra(&state, AstNodeKind::ExprWord, extra);
         }
 
         _ => {

@@ -161,6 +161,11 @@ impl<'a> Iterator for AstTraversal<'a> {
     }
 }
 
+// When storing comment and whitespace information, use this hashmap instead
+// of the actual tree. That way, not every node needs a comments field, and
+// comment information can be easily explicitly deleted whenever we want.
+pub struct CommentAndWhitespaceDb {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
