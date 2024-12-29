@@ -116,6 +116,8 @@ struct WadlerPrinter<'a> {
     chunks: Vec<Chunk<'a>>,
 
     indent_unit: u32,
+
+    needs_indent: bool,
 }
 
 impl<'a> WadlerPrinter<'a> {
@@ -130,6 +132,7 @@ impl<'a> WadlerPrinter<'a> {
             col: 0,
             chunks: vec![chunk],
             indent_unit: 2,
+            needs_indent: false,
         }
     }
 
@@ -199,15 +202,19 @@ impl<'a> WadlerPrinter<'a> {
         while let Some(chunk) = self.chunks.pop() {
             match chunk.notation.0.as_ref() {
                 Text(text, width) => {
+                    if self.needs_indent {
+                        for _ in 0..chunk.indent {
+                            output.push(' ');
+                        }
+                        self.col = chunk.indent;
+                    }
+
                     output.push_str(text);
                     self.col += width;
                 }
                 Newline => {
                     output.push('\n');
-                    for _ in 0..chunk.indent {
-                        output.push(' ');
-                    }
-                    self.col = chunk.indent;
+                    self.needs_indent = true;
                 }
                 Flat(x) => self.chunks.push(chunk.with_notation(x).flat()),
                 Indent(x) => self
