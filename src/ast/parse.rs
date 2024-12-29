@@ -97,10 +97,6 @@ impl<'a> ParseContext<'a> {
             state: Some(state),
         });
     }
-
-    fn throw(&self, e: String) -> Result<(), String> {
-        return Err(e);
-    }
 }
 
 pub fn parse(tokens: &TokenVec) -> Result<AstNodeVec, String> {
@@ -166,25 +162,28 @@ fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
             ctx.incr();
             ctx.add_node(&state, AstNodeKind::StmtIfIntro);
 
-            while let Some(_) = ctx.consume_if(TokenKind::Whitespace) {}
+            ctx.consume_spaces();
 
-            match ctx.peek() {
-                Some(TokenKind::LParen) => {
-                    ctx.incr();
-                }
-                _ => {
-                    ctx.throw(format!("if statement missing opening parenthesis"))?;
-                }
-            }
+            let Some(_) = ctx.consume_if(TokenKind::LParen) else {
+                return Err(format!("if statement missing opening parenthesis"));
+            };
 
-            while let Some(TokenKind::Whitespace) = ctx.peek() {
-                ctx.incr();
-            }
+            ctx.consume_spaces();
 
             ctx.push_state(state, |ctx, state| {
-                while let Some(_) = ctx.consume_if(TokenKind::Whitespace) {}
-
                 ctx.add_node(&state, AstNodeKind::StmtIf);
+                return Ok(());
+            });
+
+            ctx.push_proc(|ctx, _| {
+                ctx.consume_spaces();
+
+                let Some(_) = ctx.consume_if(TokenKind::Key(Key::Else)) else {
+                    return Ok(());
+                };
+
+                ctx.push_proc(parse_stmt);
+
                 return Ok(());
             });
 
@@ -194,18 +193,11 @@ fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
             ctx.push_proc(parse_stmt);
 
             ctx.push_state(state, |ctx, _state| {
-                while let Some(TokenKind::Whitespace) = ctx.peek() {
-                    ctx.incr();
-                }
+                ctx.consume_spaces();
 
-                match ctx.peek() {
-                    Some(TokenKind::RParen) => {
-                        ctx.incr();
-                    }
-                    _ => {
-                        ctx.throw(format!("if statement missing opening parenthesis"))?;
-                    }
-                }
+                let Some(_) = ctx.consume_if(TokenKind::RParen) else {
+                    return Err(format!("if statement missing opening parenthesis"));
+                };
 
                 return Ok(());
             });
@@ -227,17 +219,13 @@ fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
             const BLOCK_END: ParseStackFunc = |ctx, state| {
                 ctx.consume_spaces();
 
-                match ctx.peek() {
-                    Some(TokenKind::RBrace) => {
-                        ctx.incr();
-                        ctx.add_node(&state, AstNodeKind::StmtBlock);
-                    }
-                    _ => {
-                        ctx.push_state(state, BLOCK_END);
-                        ctx.push_state(state, parse_stmt);
-                    }
-                }
+                let Some(_) = ctx.consume_if(TokenKind::RBrace) else {
+                    ctx.push_state(state, BLOCK_END);
+                    ctx.push_state(state, parse_stmt);
+                    return Ok(());
+                };
 
+                ctx.add_node(&state, AstNodeKind::StmtBlock);
                 return Ok(());
             };
 
