@@ -1,71 +1,76 @@
 use super::*;
-use crate::util::*;
+use std::ops::*;
+use std::rc::Rc;
 
-struct SimpleLinePrintContext {
-    suffix: String,
-    indentation_level: u32,
+// Ideas
+// 1. Switch from RC to arena
+// 2. Segment it out
+// 3. Don't make the whole notation tree for short lines?
+
+// Using a first implementation which is copied ~100% from Justin Pombrio
+#[derive(Debug, Clone)]
+pub struct Notation(Rc<NotationInner>);
+
+#[derive(Debug, Clone)]
+pub enum NotationInner {
+    Newline,
+    Text(String, u32),
+    Flat(Notation),
+    Indent(Notation),
+    Concat(Notation, Notation),
+    Choice(Notation, Notation),
 }
 
-enum LinePrintContext {
-    // Pop items off in between children
-    Stacked(Vec<SimpleLinePrintContext>),
+impl Notation {
+    /// Display a newline
+    pub fn nl() -> Notation {
+        Notation(Rc::new(NotationInner::Newline))
+    }
 
-    Simple(SimpleLinePrintContext),
-}
+    /// Display text exactly as-is. The text should not contain a newline!
+    pub fn txt(s: impl ToString) -> Notation {
+        let string = s.to_string();
+        let width = string.len() as u32; // unicode_width::UnicodeWidthStr::width(&string as &str) as u32;
+        Notation(Rc::new(NotationInner::Text(string, width)))
+    }
 
-// need prefix order traversal
-struct LinePrintStackEntry {
-    context: LinePrintContext,
+    /// Use the leftmost option of every choice in the contained Notation.
+    /// If the contained Notation follows the recommendation of not
+    /// putting newlines in the left-most options of choices, then this
+    /// `flat` will be displayed all on one line.
+    pub fn flat(notation: Notation) -> Notation {
+        Notation(Rc::new(NotationInner::Flat(notation)))
+    }
 
-    // Insert between each child
-    separator: String,
-}
-
-pub struct LinePrinter<'a> {
-    current_indent: u32,
-    stack: Vec<LinePrintStackEntry>,
-    context: LinePrintStackEntry,
-    output: &'a mut dyn std::io::Write,
-}
-
-impl<'a> LinePrinter<'a> {
-    pub fn print_tree(&mut self, tree: &AstNodeVec, symbols: &Symbols) -> std::io::Result<()> {
-        // TODO: need traversal information, e.g. direction of movement in tree
-        //
-        // Maybe current tree depth is sufficient
-        for node in tree.preorder() {
-            // If the context needs to pop (potentially multiple times),
-            // do that now; also run any suffix stuff here
-
-            let new_stack_entry: Option<LinePrintStackEntry> = match node.kind {
-                AstNodeKind::StmtIfIntro => {
-                    // NOTE:
-                    //   need a stack, even for this ffs
-                    //
-                    // NOTE:
-                    //   need to do a traversal here to get infix ordering
-                    //   on expressions. :/
-                    //
-                    write!(self.output, "if (")?;
-                    None
-                }
-
-                _ => None,
-            };
-
-            // push new stack entry if necessary
-            if let Some(entry) = new_stack_entry {
-                let prev = core::mem::replace(&mut self.context, entry);
-                self.stack.push(prev);
-            }
-        }
-
-        return Ok(());
+    /// Increase the indentation level of the contained notation by the
+    /// given width. The indentation level determines the number of spaces
+    /// put after `Newline`s. (It therefore doesn't affect the first line
+    /// of a notation.)
+    pub fn indent(notation: Notation) -> Notation {
+        Notation(Rc::new(NotationInner::Indent(notation)))
     }
 }
 
-struct PrintStackEntry {
-    indent_level: usize,
+impl BitAnd<Notation> for Notation {
+    type Output = Notation;
+
+    /// Display both notations. The first character of the right
+    /// notation immediately follows the last character of the
+    /// left notation.
+    fn bitand(self, other: Notation) -> Self {
+        Self(Rc::new(NotationInner::Concat(self, other)))
+    }
+}
+
+impl BitOr<Notation> for Notation {
+    type Output = Notation;
+
+    /// If inside a `flat`, _or_ the first line of the left notation
+    /// fits within the required width, then display the left
+    /// notation. Otherwise, display the right notation.
+    fn bitor(self, other: Notation) -> Notation {
+        Notation(Rc::new(NotationInner::Choice(self, other)))
+    }
 }
 
 // Use atoms & nested groups
@@ -96,22 +101,6 @@ struct PrintStackEntry {
 //     hijklmnop
 //   )
 // )
-pub struct PrettyPrinter {
-    indent_stack: Vec<PrintStackEntry>,
-    stack_context: PrintStackEntry,
-}
-
-impl PrettyPrinter {
-    pub fn print_tree(&self, tree: &AstNodeVec) {
-        for node in tree {
-            match node.kind {
-                AstNodeKind::StmtIfIntro => {}
-
-                _ => {}
-            }
-        }
-    }
-}
 
 #[cfg(test)]
 mod tests {
@@ -134,6 +123,6 @@ mod tests {
         .map_err(|e| e.error)
         .expect("doesn't error");
 
-        let ast = parse(&tokens);
+        let _ast = parse(&tokens);
     }
 }
