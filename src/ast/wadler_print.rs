@@ -207,6 +207,7 @@ impl<'a> WadlerPrinter<'a> {
                             output.push(' ');
                         }
                         self.col = chunk.indent;
+                        self.needs_indent = false;
                     }
 
                     output.push_str(text);
@@ -293,10 +294,6 @@ impl NotationBuilder {
                 let cond = children.pop().unwrap();
                 let if_cond = children.pop().unwrap();
                 let else_cond = children.pop();
-
-                dbg!(&cond);
-                dbg!(&if_cond);
-                dbg!(&else_cond);
 
                 let cond = Notation::txt("if (") & cond & Notation::txt(")");
 

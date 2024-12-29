@@ -1,5 +1,5 @@
 if (true) {
   true
   true
-} else {
+} else if (true) {
 }

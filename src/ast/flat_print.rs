@@ -33,4 +33,5 @@
 // )
 
 struct PrettyPrinter {
+    indent_stack: Vec<u32>,
 }

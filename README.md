@@ -8,6 +8,20 @@ Writing a TS compiler just for practice.
     on-demand-and-cache query-compiler approach
   - Avoiding recursion.
 
+## TODO
+
+- [x] Basic arch
+- [x] Formatter v0
+- [ ] Op Precedence
+- [ ] Formatter v1
+- [ ] Handling for comments in formatter
+- [ ] Functions
+- [ ] Type signatures
+- [ ] Lambdas w/ type signatures
+- [ ] Generics
+- [ ] Integration
+- [ ] Parallelism
+
 ## Resources
 - Spec - https://tc39.es/ecma262 ; annoying to parse but can be useful
 - JS Test suite - https://github.com/tc39/test262
@@ -25,6 +39,7 @@ Writing a TS compiler just for practice.
   - A bag-of-heuristics approach - https://journal.stuffwithstuff.com/2015/09/08/the-hardest-program-ive-ever-written/
   - Wadler, Paper on Prettier - https://homepages.inf.ed.ac.uk/wadler/papers/prettier/prettier.pdf
   - Imperative version of Wadler - https://justinpombrio.net/2024/02/23/a-twist-on-Wadlers-printer.html
+  - Prettier playground - https://prettier.io/playground/
 
 ## Testing
 - E.g. `cargo test lexer::tests::lex_easy_test_easy_templates_ts -- --nocapture`
