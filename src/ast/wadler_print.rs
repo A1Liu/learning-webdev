@@ -235,7 +235,7 @@ impl<'a> WadlerPrinter<'a> {
 #[derive(Default)]
 struct NotationBuilder {
     // notation + subtree size
-    note_stack: Vec<(Notation, u32)>,
+    note_stack: Vec<(Option<Notation>, u32)>,
 }
 
 impl NotationBuilder {
@@ -249,85 +249,92 @@ impl NotationBuilder {
                 None => break,
             };
 
-            output.push(notation);
+            output.extend(notation);
             current += tree_size;
         }
 
         return output;
     }
 
+    fn get_note(&mut self, node: AstNodeRef) -> Option<Notation> {
+        use AstNodeKind::*;
+
+        let notation = match node.kind {
+            ExprWord => Notation::txt("word"),
+            ExprBoolean => Notation::txt("true"),
+
+            StmtIfIntro => return None,
+            StmtBlockIntro => return None,
+            StmtBlock => 'end: {
+                let children = self.collect_tree(*node.subtree_size);
+
+                if children.len() == 0 {
+                    break 'end Notation::txt("{") & Notation::nl() & Notation::txt("}");
+                }
+
+                let mut note = Notation::nl();
+
+                for child in children {
+                    note = Notation::nl() & child & note;
+                }
+
+                Notation::txt("{") & Notation::indent(note) & Notation::txt("}")
+            }
+            StmtIf => {
+                let mut children = self.collect_tree(*node.subtree_size);
+
+                let cond = children.pop().unwrap();
+                let if_cond = children.pop().unwrap();
+                let else_cond = children.pop();
+
+                dbg!(&cond);
+                dbg!(&if_cond);
+                dbg!(&else_cond);
+
+                let cond = Notation::txt("if (") & cond & Notation::txt(")");
+
+                if let Some(else_cond) = else_cond {
+                    let if_cond_flat = cond.clone()
+                        & Notation::txt(" ")
+                        & if_cond.clone()
+                        & Notation::txt(" else ")
+                        & else_cond.clone();
+                    let if_cond_vert = cond.clone()
+                        & Notation::nl()
+                        & Notation::indent(if_cond)
+                        & Notation::nl()
+                        & Notation::txt("else")
+                        & Notation::indent(else_cond);
+
+                    if_cond_flat | if_cond_vert
+                } else {
+                    let if_cond_flat = Notation::txt(" ") & if_cond.clone();
+                    let if_cond_vert = Notation::nl() & if_cond;
+                    let if_cond = if_cond_flat | if_cond_vert;
+
+                    cond & if_cond
+                }
+            }
+
+            UtilSentinel => {
+                return None;
+            }
+
+            _ => unimplemented!("printing for {:?}", node.kind),
+        };
+
+        return Some(notation);
+    }
+
     pub fn build(&mut self, ast: &AstNodeVec) -> Notation {
         for node in ast {
-            use AstNodeKind::*;
-
-            let notation = match node.kind {
-                ExprWord => Notation::txt("word"),
-                ExprBoolean => Notation::txt("true"),
-
-                StmtIfIntro => Notation::txt(""),
-                StmtBlockIntro => Notation::txt(""),
-                StmtBlock => 'end: {
-                    let children = self.collect_tree(*node.subtree_size);
-
-                    if children.len() <= 1 {
-                        break 'end Notation::txt("{") & Notation::nl() & Notation::txt("}");
-                    }
-
-                    let mut note = Notation::nl();
-
-                    for child in children {
-                        note = Notation::nl() & child & note;
-                    }
-
-                    Notation::txt("{") & Notation::indent(note) & Notation::txt("}")
-                }
-                StmtIf => {
-                    let mut children = self.collect_tree(*node.subtree_size);
-
-                    let _if_intro = children.pop().unwrap();
-                    let cond = children.pop().unwrap();
-                    let if_cond = children.pop().unwrap();
-                    let else_cond = children.pop();
-
-                    dbg!(&cond);
-                    dbg!(&if_cond);
-                    dbg!(&else_cond);
-
-                    let cond = Notation::txt("if (") & cond & Notation::txt(")");
-
-                    if let Some(else_cond) = else_cond {
-                        let if_cond_flat = cond.clone()
-                            & Notation::txt(" ")
-                            & if_cond.clone()
-                            & Notation::txt(" else ")
-                            & else_cond.clone();
-                        let if_cond_vert = cond.clone()
-                            & Notation::nl()
-                            & Notation::indent(if_cond)
-                            & Notation::nl()
-                            & Notation::txt("else")
-                            & Notation::indent(else_cond);
-
-                        if_cond_flat | if_cond_vert
-                    } else {
-                        let if_cond_flat = Notation::txt(" ") & if_cond.clone();
-                        let if_cond_vert = Notation::nl() & if_cond;
-                        let if_cond = if_cond_flat | if_cond_vert;
-
-                        cond & if_cond
-                    }
-                }
-
-                UtilSentinel => Notation::txt(""),
-
-                _ => unimplemented!("printing for {:?}", node.kind),
-            };
+            let notation = self.get_note(node);
 
             self.note_stack.push((notation, *node.subtree_size));
         }
 
         let mut note = Notation::txt("");
-        while let Some((cur, _)) = self.note_stack.pop() {
+        while let Some((Some(cur), _)) = self.note_stack.pop() {
             note = cur & Notation::nl() & note;
         }
         return note;

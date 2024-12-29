@@ -221,7 +221,7 @@ fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
 
                 let Some(_) = ctx.consume_if(TokenKind::RBrace) else {
                     ctx.push_state(state, BLOCK_END);
-                    ctx.push_state(state, parse_stmt);
+                    ctx.push_proc(parse_stmt);
                     return Ok(());
                 };
 
@@ -234,7 +234,15 @@ fn parse_stmt(ctx: &mut ParseContext, state: StackState) -> Result<(), String> {
             return Ok(());
         }
 
-        _ => unimplemented!("TokenKind={:?}", tok),
+        _ => {
+            ctx.push_proc(|ctx, _state| {
+                ctx.consume_spaces();
+                ctx.consume_if(TokenKind::Semicolon);
+                return Ok(());
+            });
+
+            return parse_expr(ctx, state);
+        }
     }
 }
 
