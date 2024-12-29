@@ -23,7 +23,8 @@ Writing a TS compiler just for practice.
   - State machine in action, else blocks (see `HandleStatementIfThenBlockFinish`) - https://github.com/carbon-language/carbon-lang/blob/trunk/toolchain/parse/handle_statement.cpp
 - Formatting
   - A bag-of-heuristics approach - https://journal.stuffwithstuff.com/2015/09/08/the-hardest-program-ive-ever-written/
-  - Paper on Prettier - https://homepages.inf.ed.ac.uk/wadler/papers/prettier/prettier.pdf
+  - Wadler, Paper on Prettier - https://homepages.inf.ed.ac.uk/wadler/papers/prettier/prettier.pdf
+  - Imperative version of Wadler - https://justinpombrio.net/2024/02/23/a-twist-on-Wadlers-printer.html
 
 ## Testing
 - E.g. `cargo test lexer::tests::lex_easy_test_easy_templates_ts -- --nocapture`
