@@ -1,6 +1,95 @@
-use crate::*;
 use std::ops::*;
 use std::rc::Rc;
+
+pub struct NoteDone;
+pub const NOTE: NoteBuilder = NoteBuilder::Empty;
+pub const EMPTY: NoteBuilder = NoteBuilder::Empty;
+pub const DONE: NoteDone = NoteDone;
+pub const NL: NotationInner = NotationInner::Newline;
+
+pub enum NoteBuilder {
+    Empty,
+    Note(Notation),
+}
+
+impl BitAnd<&'static str> for NoteBuilder {
+    type Output = NoteBuilder;
+
+    /// Display both notations. The first character of the right
+    /// notation immediately follows the last character of the
+    /// left notation.
+    fn bitand(self, other: &'static str) -> Self::Output {
+        let note = Notation::txt(other);
+        return self & note;
+    }
+}
+
+impl BitAnd<NoteBuilder> for NoteBuilder {
+    type Output = NoteBuilder;
+
+    fn bitand(self, other: NoteBuilder) -> Self::Output {
+        match other {
+            Self::Empty => self,
+            Self::Note(other) => self & other,
+        }
+    }
+}
+
+impl BitAnd<NotationInner> for NoteBuilder {
+    type Output = NoteBuilder;
+
+    fn bitand(self, other: NotationInner) -> Self::Output {
+        return self & Notation(Rc::new(other));
+    }
+}
+
+impl BitAnd<Notation> for NoteBuilder {
+    type Output = NoteBuilder;
+
+    fn bitand(self, other: Notation) -> Self::Output {
+        match self {
+            Self::Empty => Self::Note(other),
+            Self::Note(note) => Self::Note(Notation(Rc::new(NotationInner::Concat(note, other)))),
+        }
+    }
+}
+
+impl BitAnd<&Notation> for NoteBuilder {
+    type Output = NoteBuilder;
+
+    fn bitand(self, other: &Notation) -> Self::Output {
+        return self & other.clone();
+    }
+}
+
+impl BitAnd<NoteDone> for NoteBuilder {
+    type Output = Notation;
+
+    /// Display both notations. The first character of the right
+    /// notation immediately follows the last character of the
+    /// left notation.
+    fn bitand(self, _other: NoteDone) -> Self::Output {
+        match self {
+            Self::Empty => panic!("failed"),
+            Self::Note(note) => note,
+        }
+    }
+}
+
+impl Neg for NoteBuilder {
+    type Output = NoteBuilder;
+
+    /// Increase the indentation level of the contained notation by the
+    /// given width. The indentation level determines the number of spaces
+    /// put after `Newline`s. (It therefore doesn't affect the first line
+    /// of a notation.)
+    fn neg(self) -> Self::Output {
+        match self {
+            Self::Empty => panic!("failed"),
+            Self::Note(note) => Self::Note(Notation(Rc::new(NotationInner::Indent(note)))),
+        }
+    }
+}
 
 // Ideas
 // 1. Switch from RC to arena
@@ -15,44 +104,42 @@ pub struct Notation(Rc<NotationInner>);
 pub enum NotationInner {
     Newline,
     Text(String, u32),
-    Flat(Notation),
     Indent(Notation),
-    Braced(Notation),
     Concat(Notation, Notation),
     Choice(Notation, Notation),
+
+    /// Use the leftmost option of every choice in the contained Notation.
+    /// If the contained Notation follows the recommendation of not
+    /// putting newlines in the left-most options of choices, then this
+    /// `flat` will be displayed all on one line.
+    Flat(Notation),
 }
 
 impl Notation {
-    /// Display a newline
-    pub fn nl() -> Notation {
-        Notation(Rc::new(NotationInner::Newline))
-    }
-
     /// Display text exactly as-is. The text should not contain a newline!
     pub fn txt(s: impl ToString) -> Notation {
         let string = s.to_string();
         let width = string.len() as u32; // unicode_width::UnicodeWidthStr::width(&string as &str) as u32;
         Notation(Rc::new(NotationInner::Text(string, width)))
     }
+}
 
-    /// Use the leftmost option of every choice in the contained Notation.
-    /// If the contained Notation follows the recommendation of not
-    /// putting newlines in the left-most options of choices, then this
-    /// `flat` will be displayed all on one line.
-    pub fn flat(notation: Notation) -> Notation {
-        Notation(Rc::new(NotationInner::Flat(notation)))
+impl Neg for &Notation {
+    type Output = Notation;
+
+    fn neg(self) -> Self::Output {
+        -self.clone()
     }
+}
 
-    /// Increase the indentation level of the contained notation by the
-    /// given width. The indentation level determines the number of spaces
-    /// put after `Newline`s. (It therefore doesn't affect the first line
-    /// of a notation.)
-    pub fn indent(notation: Notation) -> Notation {
-        Notation(Rc::new(NotationInner::Indent(notation)))
-    }
+impl Neg for Notation {
+    type Output = Notation;
 
-    fn braced(notation: Notation) -> Notation {
-        Notation(Rc::new(NotationInner::Braced(notation)))
+    /// Display both notations. The first character of the right
+    /// notation immediately follows the last character of the
+    /// left notation.
+    fn neg(self) -> Self::Output {
+        Self(Rc::new(NotationInner::Indent(self)))
     }
 }
 
@@ -79,7 +166,7 @@ impl BitOr<Notation> for Notation {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct Chunk<'a> {
+pub struct Chunk<'a> {
     notation: &'a Notation,
     indent: u32,
     flat: bool,
@@ -105,7 +192,7 @@ impl<'a> Chunk<'a> {
     }
 }
 
-struct WadlerPrinter<'a> {
+pub struct WadlerPrinter<'a> {
     /// Maximum line width that we'll try to stay within
     width: u32,
     /// Current column position
@@ -121,7 +208,7 @@ struct WadlerPrinter<'a> {
 }
 
 impl<'a> WadlerPrinter<'a> {
-    fn new(notation: &'a Notation, width: u32) -> WadlerPrinter<'a> {
+    pub fn new(notation: &'a Notation, width: u32) -> WadlerPrinter<'a> {
         let chunk = Chunk {
             notation,
             indent: 0,
@@ -136,7 +223,7 @@ impl<'a> WadlerPrinter<'a> {
         }
     }
 
-    fn fits(&self, chunk: Chunk<'a>) -> bool {
+    pub fn fits(&self, chunk: Chunk<'a>) -> bool {
         use NotationInner::*;
 
         let mut remaining = if self.col <= self.width {
@@ -174,13 +261,6 @@ impl<'a> WadlerPrinter<'a> {
                     stack.push(chunk.with_notation(y));
                     stack.push(chunk.with_notation(x));
                 }
-                Braced(_x) => {
-                    if 2 <= remaining {
-                        remaining -= 2;
-                    } else {
-                        return false;
-                    }
-                }
                 Choice(x, y) => {
                     if chunk.flat {
                         stack.push(chunk.with_notation(x));
@@ -195,7 +275,7 @@ impl<'a> WadlerPrinter<'a> {
         }
     }
 
-    fn print(&mut self) -> String {
+    pub fn print(&mut self) -> String {
         use NotationInner::*;
 
         let mut output = String::new();
@@ -221,7 +301,6 @@ impl<'a> WadlerPrinter<'a> {
                 Indent(x) => self
                     .chunks
                     .push(chunk.with_notation(x).indented(self.indent_unit)),
-                Braced(x) => self.chunks.push(chunk.with_notation(x)),
 
                 Concat(x, y) => {
                     self.chunks.push(chunk.with_notation(y));
@@ -237,148 +316,5 @@ impl<'a> WadlerPrinter<'a> {
             }
         }
         output
-    }
-}
-
-#[derive(Default)]
-struct NotationBuilder {
-    // notation + subtree size
-    note_stack: Vec<(Option<Notation>, u32)>,
-}
-
-impl NotationBuilder {
-    pub fn collect_tree(&mut self, subtree_size: u32) -> Vec<Notation> {
-        let mut output = Vec::new();
-        let mut current: u32 = 1;
-
-        while current < subtree_size {
-            let (notation, tree_size) = match self.note_stack.pop() {
-                Some(a) => a,
-                None => break,
-            };
-
-            output.extend(notation);
-            current += tree_size;
-        }
-
-        return output;
-    }
-
-    fn get_note(&mut self, node: AstNodeRef) -> Option<Notation> {
-        use AstNodeKind::*;
-
-        let notation = match node.kind {
-            ExprWord => Notation::txt("word"),
-            ExprBoolean => Notation::txt("true"),
-
-            StmtIfIntro => return None,
-            StmtBlockIntro => return None,
-            StmtBlock => 'end: {
-                let children = self.collect_tree(*node.subtree_size);
-
-                if children.len() == 0 {
-                    break 'end Notation::txt("{") & Notation::nl() & Notation::txt("}");
-                }
-
-                let mut note = Notation::nl();
-
-                for child in children {
-                    note = Notation::nl() & child & note;
-                }
-
-                Notation::txt("{") & Notation::indent(note) & Notation::txt("}")
-            }
-            StmtIf => {
-                let mut children = self.collect_tree(*node.subtree_size);
-
-                let cond = children.pop().unwrap();
-                let if_cond = children.pop().unwrap();
-                let else_cond = children.pop();
-
-                let cond = Notation::txt("if (") & cond & Notation::txt(")");
-
-                if let Some(else_cond) = else_cond {
-                    let if_cond_flat = cond.clone()
-                        & Notation::txt(" ")
-                        & if_cond.clone()
-                        & Notation::txt(" else ")
-                        & else_cond.clone();
-                    let if_cond_vert = cond.clone()
-                        & Notation::nl()
-                        & Notation::indent(if_cond)
-                        & Notation::nl()
-                        & Notation::txt("else")
-                        & Notation::indent(else_cond);
-
-                    if_cond_flat | if_cond_vert
-                } else {
-                    let if_cond_flat = Notation::txt(" ") & if_cond.clone();
-                    let if_cond_vert = Notation::nl() & if_cond;
-                    let if_cond = if_cond_flat | if_cond_vert;
-
-                    cond & if_cond
-                }
-            }
-
-            UtilSentinel => {
-                return None;
-            }
-
-            _ => unimplemented!("printing for {:?}", node.kind),
-        };
-
-        return Some(notation);
-    }
-
-    pub fn build(&mut self, ast: &AstNodeVec) -> Notation {
-        for node in ast {
-            let notation = self.get_note(node);
-
-            self.note_stack.push((notation, *node.subtree_size));
-        }
-
-        let mut note = Notation::txt("");
-        while let Some((Some(cur), _)) = self.note_stack.pop() {
-            note = cur & Notation::nl() & note;
-        }
-        return note;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test_resources("test/printing/*")]
-    fn print_easy(path: &str) {
-        let source = std::fs::read_to_string(path).expect("Should have been able to read the file");
-
-        let mut symbols = Symbols::new();
-        let tokens = lex_with_options(
-            &source,
-            &mut symbols,
-            LexOptions {
-                include_comments: true,
-                include_spacing: false,
-            },
-        )
-        .map_err(|e| e.error)
-        .expect("doesn't error");
-
-        let ast = parse(&tokens).expect("doesn't error");
-
-        println!(
-            "{:?}",
-            &ast.iter().map(|a| a.to_owned()).collect::<Vec<_>>()
-        );
-
-        let mut builder = NotationBuilder::default();
-        let notation = builder.build(&ast);
-
-        let mut printer = WadlerPrinter::new(&notation, 80);
-
-        let output = printer.print();
-
-        assert_eq!(output, source);
     }
 }

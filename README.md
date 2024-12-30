@@ -31,6 +31,11 @@ Writing a TS compiler just for practice.
   - Aaron Hsu, Data-parallel compiler - https://scholarworks.iu.edu/dspace/items/3ab772c9-92c9-4f59-bd95-40aff99e8c7a
   - Andrew Kelley, Zig's re-design - https://vimeo.com/649009599
   - Max Brunsfeld, Tree-sitter (just the parser branching parts) - https://www.youtube.com/watch?v=Jes3bD6P0To
+- Other designs
+  - Biome does... something - https://docs.rs/biome_js_parser/latest/biome_js_parser/
+    - Their parser says they use events?
+    - Their actual code seems to just be ref-counting + node-based AST. Not
+      seeing any special sauce for perf, but not really sure where to look.
 - Compiler architecture practice
   - state-machine over recursion for the parser, and some other ideas - https://github.com/carbon-language/carbon-lang/tree/trunk/toolchain/parse
   - Some of the most important stuff regarding traversal (see `TreeAndSubtrees` and the field `subtree_sizes_`) - https://github.com/carbon-language/carbon-lang/blob/trunk/toolchain/parse/tree_and_subtrees.h
