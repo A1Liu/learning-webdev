@@ -84,10 +84,11 @@ impl Neg for NoteBuilder {
     /// put after `Newline`s. (It therefore doesn't affect the first line
     /// of a notation.)
     fn neg(self) -> Self::Output {
-        match self {
-            Self::Empty => panic!("failed"),
-            Self::Note(note) => Self::Note(Notation(Rc::new(NotationInner::Indent(note)))),
-        }
+        let Self::Note(note) = self else {
+            panic!("failed");
+        };
+
+        Self::Note(Notation(Rc::new(NotationInner::Indent(note))))
     }
 }
 

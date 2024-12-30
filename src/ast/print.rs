@@ -1,5 +1,5 @@
-use crate::*;
 use super::wadler_print::*;
+use crate::*;
 
 #[derive(Default)]
 struct NotationBuilder {
@@ -56,16 +56,20 @@ impl NotationBuilder {
                 let if_cond = &children.pop().unwrap();
                 let else_cond = &children.pop();
 
-                let cond = NOTE & "if (" & cond & ")" & DONE;
-                let cond = &cond;
-
                 let Some(else_cond) = else_cond else {
                     let if_cond_flat = NOTE & " " & if_cond & DONE;
-                    let if_cond_vert = NOTE & NL & if_cond & DONE;
+                    let if_cond_vert = NOTE & NL & -if_cond & DONE;
                     let if_cond = if_cond_flat | if_cond_vert;
 
-                    break 'end NOTE & cond & if_cond & DONE;
+                    let cond_flat = NOTE & cond & ")" & DONE;
+                    let cond_vert = NOTE & NL & -cond & NL & ")" & DONE;
+                    let cond = cond_flat | cond_vert;
+
+                    break 'end NOTE & "if (" & cond & if_cond & DONE;
                 };
+
+                let cond = NOTE & "if (" & cond & ")" & DONE;
+                let cond = &cond;
 
                 let if_cond_flat = NOTE & cond & " " & if_cond & " else " & else_cond & DONE;
                 let if_cond_vert = NOTE & cond & NL & -if_cond & NL & "else" & -else_cond & DONE;
@@ -132,6 +136,6 @@ mod tests {
 
         let output = printer.print();
 
-        assert_eq!(output, source);
+        pretty_assertions::assert_eq!(output, source);
     }
 }
