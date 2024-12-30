@@ -47,7 +47,7 @@ impl NotationBuilder {
                     note = NOTE & NL & child & note;
                 }
 
-                NOTE & "{" & -note & "}" & DONE
+                Notation::braced(NOTE & "{" & -note & "}" & DONE)
             }
             StmtIf => 'end: {
                 let mut children = self.collect_tree(*node.subtree_size);

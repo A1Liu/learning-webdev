@@ -1,16 +1,46 @@
 use std::ops::*;
 use std::rc::Rc;
 
+pub enum NoteBuilder {
+    Empty,
+    PropagateNull,
+    Note(Notation),
+}
+
+// Ideas
+// 1. Switch from RC to arena
+// 2. Segment it out
+// 3. Don't make the whole notation tree for short lines?
+
+// Using a first implementation which is copied ~100% from Justin Pombrio
+#[derive(Debug, Clone)]
+pub struct Notation(Rc<NotationInner>);
+
+#[derive(Debug, Clone)]
+pub enum NotationInner {
+    Newline,
+    Text(String, u32),
+    Indent(Notation),
+    Concat(Notation, Notation),
+    Choice(Notation, Notation),
+
+    /// HACKY system which marks that this is a code block. This is used to produce
+    /// a PropagateNull, which propagates through Concat and is eaten by Choice.
+    Braced(Notation),
+    PropagateNull,
+
+    /// Use the leftmost option of every choice in the contained Notation.
+    /// If the contained Notation follows the recommendation of not
+    /// putting newlines in the left-most options of choices, then this
+    /// `flat` will be displayed all on one line.
+    Flat(Notation),
+}
+
 pub struct NoteDone;
 pub const NOTE: NoteBuilder = NoteBuilder::Empty;
 pub const EMPTY: NoteBuilder = NoteBuilder::Empty;
 pub const DONE: NoteDone = NoteDone;
 pub const NL: NotationInner = NotationInner::Newline;
-
-pub enum NoteBuilder {
-    Empty,
-    Note(Notation),
-}
 
 impl BitAnd<&'static str> for NoteBuilder {
     type Output = NoteBuilder;
@@ -19,6 +49,10 @@ impl BitAnd<&'static str> for NoteBuilder {
     /// notation immediately follows the last character of the
     /// left notation.
     fn bitand(self, other: &'static str) -> Self::Output {
+        if let Self::PropagateNull = self {
+            return Self::PropagateNull;
+        }
+
         let note = Notation::txt(other);
         return self & note;
     }
@@ -28,8 +62,13 @@ impl BitAnd<NoteBuilder> for NoteBuilder {
     type Output = NoteBuilder;
 
     fn bitand(self, other: NoteBuilder) -> Self::Output {
+        if let Self::PropagateNull = self {
+            return Self::PropagateNull;
+        }
+
         match other {
             Self::Empty => self,
+            Self::PropagateNull => Self::PropagateNull,
             Self::Note(other) => self & other,
         }
     }
@@ -39,6 +78,10 @@ impl BitAnd<NotationInner> for NoteBuilder {
     type Output = NoteBuilder;
 
     fn bitand(self, other: NotationInner) -> Self::Output {
+        if let NotationInner::PropagateNull = other {
+            return Self::PropagateNull;
+        }
+
         return self & Notation(Rc::new(other));
     }
 }
@@ -47,8 +90,13 @@ impl BitAnd<Notation> for NoteBuilder {
     type Output = NoteBuilder;
 
     fn bitand(self, other: Notation) -> Self::Output {
+        if let NotationInner::PropagateNull = other.0.as_ref() {
+            return Self::PropagateNull;
+        }
+
         match self {
             Self::Empty => Self::Note(other),
+            Self::PropagateNull => Self::PropagateNull,
             Self::Note(note) => Self::Note(Notation(Rc::new(NotationInner::Concat(note, other)))),
         }
     }
@@ -71,6 +119,7 @@ impl BitAnd<NoteDone> for NoteBuilder {
     fn bitand(self, _other: NoteDone) -> Self::Output {
         match self {
             Self::Empty => panic!("failed"),
+            Self::PropagateNull => Notation(Rc::new(NotationInner::PropagateNull)),
             Self::Note(note) => note,
         }
     }
@@ -79,10 +128,6 @@ impl BitAnd<NoteDone> for NoteBuilder {
 impl Neg for NoteBuilder {
     type Output = NoteBuilder;
 
-    /// Increase the indentation level of the contained notation by the
-    /// given width. The indentation level determines the number of spaces
-    /// put after `Newline`s. (It therefore doesn't affect the first line
-    /// of a notation.)
     fn neg(self) -> Self::Output {
         let Self::Note(note) = self else {
             panic!("failed");
@@ -92,36 +137,16 @@ impl Neg for NoteBuilder {
     }
 }
 
-// Ideas
-// 1. Switch from RC to arena
-// 2. Segment it out
-// 3. Don't make the whole notation tree for short lines?
-
-// Using a first implementation which is copied ~100% from Justin Pombrio
-#[derive(Debug, Clone)]
-pub struct Notation(Rc<NotationInner>);
-
-#[derive(Debug, Clone)]
-pub enum NotationInner {
-    Newline,
-    Text(String, u32),
-    Indent(Notation),
-    Concat(Notation, Notation),
-    Choice(Notation, Notation),
-
-    /// Use the leftmost option of every choice in the contained Notation.
-    /// If the contained Notation follows the recommendation of not
-    /// putting newlines in the left-most options of choices, then this
-    /// `flat` will be displayed all on one line.
-    Flat(Notation),
-}
-
 impl Notation {
     /// Display text exactly as-is. The text should not contain a newline!
     pub fn txt(s: impl ToString) -> Notation {
         let string = s.to_string();
         let width = string.len() as u32; // unicode_width::UnicodeWidthStr::width(&string as &str) as u32;
         Notation(Rc::new(NotationInner::Text(string, width)))
+    }
+
+    pub fn braced(s: Notation) -> Notation {
+        Notation(Rc::new(NotationInner::Braced(s)))
     }
 }
 
@@ -136,22 +161,16 @@ impl Neg for &Notation {
 impl Neg for Notation {
     type Output = Notation;
 
-    /// Display both notations. The first character of the right
-    /// notation immediately follows the last character of the
-    /// left notation.
+    /// Increase the indentation level of the contained notation by the
+    /// given width. The indentation level determines the number of spaces
+    /// put after `Newline`s. (It therefore doesn't affect the first line
+    /// of a notation.)
     fn neg(self) -> Self::Output {
+        if let NotationInner::Braced(_) = self.0.as_ref() {
+            return Self(Rc::new(NotationInner::PropagateNull));
+        }
+
         Self(Rc::new(NotationInner::Indent(self)))
-    }
-}
-
-impl BitAnd<Notation> for Notation {
-    type Output = Notation;
-
-    /// Display both notations. The first character of the right
-    /// notation immediately follows the last character of the
-    /// left notation.
-    fn bitand(self, other: Notation) -> Self {
-        Self(Rc::new(NotationInner::Concat(self, other)))
     }
 }
 
@@ -162,6 +181,10 @@ impl BitOr<Notation> for Notation {
     /// fits within the required width, then display the left
     /// notation. Otherwise, display the right notation.
     fn bitor(self, other: Notation) -> Notation {
+        if let NotationInner::PropagateNull = other.0.as_ref() {
+            return self;
+        }
+
         Notation(Rc::new(NotationInner::Choice(self, other)))
     }
 }
@@ -248,7 +271,11 @@ impl<'a> WadlerPrinter<'a> {
             };
 
             match chunk.notation.0.as_ref() {
+                PropagateNull => {}
+                Braced(x) => stack.push(chunk.with_notation(x)),
+
                 Newline => return true,
+
                 Text(_text, text_width) => {
                     if *text_width <= remaining {
                         remaining -= *text_width;
@@ -282,6 +309,9 @@ impl<'a> WadlerPrinter<'a> {
         let mut output = String::new();
         while let Some(chunk) = self.chunks.pop() {
             match chunk.notation.0.as_ref() {
+                PropagateNull => {}
+                Braced(x) => self.chunks.push(chunk.with_notation(x)),
+
                 Text(text, width) => {
                     if self.needs_indent {
                         for _ in 0..chunk.indent {
