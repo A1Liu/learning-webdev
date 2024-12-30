@@ -14,7 +14,7 @@ pub enum NoteBuilder {
 
 // Using a first implementation which is copied ~100% from Justin Pombrio
 #[derive(Debug, Clone)]
-pub struct Notation(Rc<NotationInner>);
+pub struct Notation(pub Rc<NotationInner>);
 
 #[derive(Debug, Clone)]
 pub enum NotationInner {

@@ -38,7 +38,7 @@ impl NotationBuilder {
                 let children = self.collect_tree(*node.subtree_size);
 
                 if children.len() == 0 {
-                    break 'end NOTE & "{" & NL & "}" & DONE;
+                    break 'end Notation::braced(NOTE & "{" & NL & "}" & DONE);
                 }
 
                 let mut note = NOTE & NL;
@@ -49,32 +49,49 @@ impl NotationBuilder {
 
                 Notation::braced(NOTE & "{" & -note & "}" & DONE)
             }
-            StmtIf => 'end: {
+            StmtIf => {
+                // if (true) {  if (true)
+                //   blarg        blarg
+                // } else {     else {
+                //   merp         merp
+                // }            }
+
+                // if (true)    if (true) {
+                //   blarg        merp
+                // else         } else
+                //   merp         merp
+
                 let mut children = self.collect_tree(*node.subtree_size);
 
                 let cond = &children.pop().unwrap();
                 let if_cond = &children.pop().unwrap();
                 let else_cond = &children.pop();
 
-                let Some(else_cond) = else_cond else {
-                    let if_cond_flat = NOTE & " " & if_cond & DONE;
-                    let if_cond_vert = NOTE & NL & -if_cond & DONE;
-                    let if_cond = if_cond_flat | if_cond_vert;
+                let suffix = match else_cond {
+                    None => Notation::txt(""),
+                    Some(else_cond) => {
+                        let else_cond_flat = NOTE & " " & else_cond & DONE;
+                        let else_cond_vert = NOTE & NL & -else_cond & DONE;
+                        let else_cond = else_cond_flat | else_cond_vert;
 
-                    let cond_flat = NOTE & cond & ")" & DONE;
-                    let cond_vert = NOTE & NL & -cond & NL & ")" & DONE;
-                    let cond = cond_flat | cond_vert;
+                        let else_cond = NOTE & "else" & else_cond & DONE;
 
-                    break 'end NOTE & "if (" & cond & if_cond & DONE;
+                        match if_cond.0.as_ref() {
+                            NotationInner::Braced(_) => NOTE & " " & else_cond & DONE,
+                            _ => NOTE & NL & else_cond & DONE,
+                        }
+                    }
                 };
 
-                let cond = NOTE & "if (" & cond & ")" & DONE;
-                let cond = &cond;
+                let if_cond_flat = NOTE & " " & if_cond & DONE;
+                let if_cond_vert = NOTE & NL & -if_cond & DONE;
+                let if_cond = if_cond_flat | if_cond_vert;
 
-                let if_cond_flat = NOTE & cond & " " & if_cond & " else " & else_cond & DONE;
-                let if_cond_vert = NOTE & cond & NL & -if_cond & NL & "else" & -else_cond & DONE;
+                let cond_flat = NOTE & cond & DONE;
+                let cond_vert = NOTE & NL & -cond & NL & DONE;
+                let cond = cond_flat | cond_vert;
 
-                if_cond_flat | if_cond_vert
+                NOTE & "if (" & cond & ")" & if_cond & suffix & DONE
             }
 
             UtilSentinel => {
@@ -124,10 +141,10 @@ mod tests {
 
         let ast = parse(&tokens).expect("doesn't error");
 
-        println!(
-            "{:?}",
-            &ast.iter().map(|a| a.to_owned()).collect::<Vec<_>>()
-        );
+        // println!(
+        //     "{:?}",
+        //     &ast.iter().map(|a| a.to_owned()).collect::<Vec<_>>()
+        // );
 
         let mut builder = NotationBuilder::default();
         let notation = builder.build(&ast);
@@ -136,6 +153,6 @@ mod tests {
 
         let output = printer.print();
 
-        pretty_assertions::assert_eq!(output, source);
+        pretty_assertions::assert_eq!(source, output);
     }
 }
