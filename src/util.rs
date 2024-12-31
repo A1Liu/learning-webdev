@@ -43,6 +43,9 @@ impl Symbols {
 pub use tests::*;
 #[cfg(test)]
 pub mod tests {
+    extern crate test;
+
+    pub use test::{black_box, Bencher};
     pub use test_generator::test_resources;
     pub use yaml_rust::YamlLoader;
 

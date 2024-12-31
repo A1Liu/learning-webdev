@@ -44,6 +44,7 @@ Writing a TS compiler just for practice.
   - A bag-of-heuristics approach - https://journal.stuffwithstuff.com/2015/09/08/the-hardest-program-ive-ever-written/
   - Wadler, Paper on Prettier - https://homepages.inf.ed.ac.uk/wadler/papers/prettier/prettier.pdf
   - Imperative version of Wadler - https://justinpombrio.net/2024/02/23/a-twist-on-Wadlers-printer.html
+  - Another algorithm - https://yorickpeterse.com/articles/how-to-write-a-code-formatter/#nodes-and-trees
   - Prettier playground - https://prettier.io/playground/
 
 ## Testing

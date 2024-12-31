@@ -290,6 +290,13 @@ impl<'a> WadlerPrinter<'a> {
                     stack.push(chunk.with_notation(x));
                 }
                 Choice(x, y) => {
+                    // Justin Pombrio's version uses `flat` to prefer `x` and
+                    // otherwise always prefers `y`. However, his algorithm
+                    // examples all make aggressive use of `flat`, which causes
+                    // `Choice` to behave like it prefers `x` anyways. I think
+                    // we'll probably end up needing to prefer one track over
+                    // the other at some point. Not sure what to do here.
+
                     if chunk.flat {
                         stack.push(chunk.with_notation(x));
                     } else {

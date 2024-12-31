@@ -155,4 +155,35 @@ mod tests {
 
         pretty_assertions::assert_eq!(source, output);
     }
+
+    #[bench]
+    fn wadler_bench(bencher: &mut Bencher) {
+        let source = std::fs::read_to_string("test/benches/print.ts")
+            .expect("Should have been able to read the file");
+
+        bencher.iter(|| {
+            let mut symbols = Symbols::new();
+            let tokens = lex_with_options(
+                &source,
+                &mut symbols,
+                LexOptions {
+                    include_comments: true,
+                    include_spacing: false,
+                },
+            )
+            .map_err(|e| e.error)
+            .expect("doesn't error");
+
+            let ast = parse(&tokens).expect("doesn't error");
+
+            let mut builder = NotationBuilder::default();
+            let notation = builder.build(&ast);
+
+            let mut printer = WadlerPrinter::new(&notation, 80);
+
+            let output = printer.print();
+
+            return std::rc::Rc::new(output);
+        });
+    }
 }

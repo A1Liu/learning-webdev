@@ -1,3 +1,6 @@
+use std::collections::VecDeque;
+use std::ops::*;
+
 // This is an algorithm I came up with before reading Justin's article/Wadlin's paper.
 // In theory they're close to equivalent, but Justin/Wadlin actually had code
 // which implemented it, and I struggled quite a bit with actually implementing
@@ -48,8 +51,6 @@
 //
 // nodes can pop, write indentation, etc.
 
-
-
 // F3
 
 // F1
@@ -74,6 +75,46 @@
 //
 // In theory I can encode all the info I need by hardcoding the different kinds
 // of `Choice` nodes. I think. Merp.
+
+/*
+
+Traversal
+
+
+->
+
+Some kind of queue of atoms + group markers
+
+
+Layout
+
+group stack (track indentation for vertical groups)
+
+
+
+ */
+
+type Glue = fn(PrintItem, PrintItem) -> (PrintItem, Option<PrintItem>);
+enum PrintItem {
+    Atom(String),
+    Newline,
+}
+
+#[derive(Default)]
+struct WrappingBuffer {
+    items: VecDeque<PrintItem>,
+    printable_end: u32,
+    character_width: u32,
+    glue: Option<Glue>,
+}
+
+impl<T: Into<PrintItem>> AddAssign<T> for WrappingBuffer {
+    fn add_assign(&mut self, rhs: T) {
+        use PrintItem::*;
+    }
+}
+
+struct PrintLayoutEngine {}
 
 enum ListContext {
     CommaList,
